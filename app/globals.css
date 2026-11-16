@@ -689,3 +689,7 @@ footer {
     scroll-behavior: auto !important;
   }
 }
+
+.comparison > div:last-child pre {
+  background: var(--replacement, #132a26);
+}

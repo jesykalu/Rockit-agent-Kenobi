@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import type { Job, Decision } from "@/lib/types";
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/upload-limits";
+import { findingCopy, acceptRemaining } from "@/lib/review-copy";
 type ViewJob = Omit<Job, "files"> & {
   files: (Omit<Job["files"][number], "content" | "text"> & {
     textLength: number;
@@ -28,6 +29,10 @@ export default function Workspace() {
     end: number;
     totalChars: number;
   } | null>(null);
+  const [customEditing, setCustomEditing] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [customText, setCustomText] = useState<Record<string, string>>({});
   const [sourceError, setSourceError] = useState("");
   async function load(id: string) {
     const res = await fetch(`/api/jobs/${id}`);
@@ -436,7 +441,14 @@ export default function Workspace() {
                           <strong>{f.path}</strong> · Line {f.line}
                         </p>
                         <pre>{f.original}</pre>
-                        <p>{f.reason}</p>
+                        <p>
+                          <strong>Why this matters:</strong>{" "}
+                          {findingCopy(f).risk}
+                        </p>
+                        <p>
+                          <strong>Suggested change:</strong>{" "}
+                          {findingCopy(f).action}
+                        </p>
                       </article>
                     ))}
                   </details>
@@ -458,6 +470,28 @@ export default function Workspace() {
                 ))}
               </ul>
             </details>
+            {editable && (
+              <section className="coverage" aria-label="Bulk review decisions">
+                <button
+                  disabled={!!busy || reviewed === job.findings.length}
+                  onClick={() => {
+                    setDecisions((d) => acceptRemaining(job.findings, d));
+                    setAck(false);
+                  }}
+                >
+                  Accept all changes
+                </button>
+                <p>
+                  Accepts undecided suggestions across all files. Your own
+                  replacements and “Keep original” decisions stay as they are.
+                  Known incorrect spacing findings are skipped. Nothing is
+                  applied until you approve and build the export.
+                </p>
+                <span role="status">
+                  {reviewed} of {job.findings.length} findings decided
+                </span>
+              </section>
+            )}
             <div className="review-grid">
               <aside className="file-list">
                 <h2>Source files</h2>
@@ -543,10 +577,14 @@ export default function Workspace() {
                 )}
                 {visible.map((f) => {
                   const decision = decisions[f.id];
+                  const copy = findingCopy(f);
+                  const custom =
+                    decision?.decision === "accept" &&
+                    decision.replacement !== f.replacement;
                   return (
                     <article className="finding" key={f.id}>
                       <div className="finding-heading">
-                        <strong>{f.category}</strong>
+                        <strong>{copy.title}</strong>
                         <span>
                           Line {f.line} ·{" "}
                           {f.source === "ai"
@@ -556,34 +594,93 @@ export default function Workspace() {
                               : "Reviewer"}
                         </span>
                       </div>
-                      <p>{f.reason}</p>
+                      <p>
+                        <strong>Why this matters:</strong> {copy.risk}
+                      </p>
+                      <p>
+                        <strong>Suggested change:</strong> {copy.action}
+                      </p>
                       <div className="comparison">
                         <div>
-                          <label>Original</label>
+                          <label>Text found in your file</label>
                           <pre>{f.original}</pre>
                         </div>
                         <div>
-                          <label htmlFor={`replacement-${f.id}`}>
-                            Replacement
+                          <label>
+                            {decision?.decision === "reject"
+                              ? "Text that will stay"
+                              : custom
+                                ? "Your replacement"
+                                : "Suggested replacement"}
                           </label>
+                          <pre>
+                            {decision?.decision === "reject"
+                              ? f.original
+                              : (decision?.replacement ?? f.replacement) ||
+                                "(This text will be removed; nothing will replace it.)"}
+                          </pre>
+                        </div>
+                      </div>
+                      {customEditing[f.id] && editable && (
+                        <div>
+                          <label htmlFor={`replacement-${f.id}`}>
+                            Write your own replacement
+                          </label>
+                          <p className="hint">
+                            Enter the exact words to use, not an instruction.
+                            Leave blank to remove this text. Your edit will only
+                            be selected when you choose “Use my replacement”.
+                          </p>
                           <textarea
                             id={`replacement-${f.id}`}
-                            disabled={!editable || !!busy}
-                            value={decision?.replacement ?? f.replacement}
+                            value={
+                              customText[f.id] ??
+                              decision?.replacement ??
+                              f.replacement
+                            }
+                            disabled={!!busy}
                             rows={3}
                             onChange={(e) =>
+                              setCustomText((t) => ({
+                                ...t,
+                                [f.id]: e.target.value,
+                              }))
+                            }
+                          />
+                          <button
+                            disabled={!!busy}
+                            onClick={() => {
                               setDecisions((d) => ({
                                 ...d,
                                 [f.id]: {
                                   id: f.id,
                                   decision: "accept",
-                                  replacement: e.target.value,
+                                  replacement:
+                                    customText[f.id] ??
+                                    decision?.replacement ??
+                                    f.replacement,
                                 },
-                              }))
+                              }));
+                              setCustomEditing((t) => ({
+                                ...t,
+                                [f.id]: false,
+                              }));
+                              setAck(false);
+                            }}
+                          >
+                            Use my replacement
+                          </button>
+                          <button
+                            disabled={!!busy}
+                            onClick={() =>
+                              setCustomEditing((t) => ({ ...t, [f.id]: false }))
                             }
-                          />
+                          >
+                            Cancel edit
+                          </button>
                         </div>
-                      </div>
+                      )}
+
                       <div className="decision-row">
                         <button
                           disabled={!editable || !!busy}
@@ -594,13 +691,24 @@ export default function Workspace() {
                               [f.id]: {
                                 id: f.id,
                                 decision: "accept",
-                                replacement:
-                                  d[f.id]?.replacement ?? f.replacement,
+                                replacement: f.replacement,
                               },
                             }))
                           }
                         >
                           Accept change
+                        </button>
+                        <button
+                          disabled={!editable || !!busy}
+                          onClick={() => {
+                            setCustomText((t) => ({
+                              ...t,
+                              [f.id]: decision?.replacement ?? f.replacement,
+                            }));
+                            setCustomEditing((t) => ({ ...t, [f.id]: true }));
+                          }}
+                        >
+                          Use my own replacement
                         </button>
                         <button
                           disabled={!editable || !!busy}
@@ -621,7 +729,9 @@ export default function Workspace() {
                         </button>
                         <span>
                           {decision?.decision === "accept"
-                            ? "Will change"
+                            ? custom
+                              ? "Your replacement selected"
+                              : "Suggested change selected"
                             : decision?.decision === "reject"
                               ? "Risk retained"
                               : "Needs a decision"}
@@ -712,7 +822,8 @@ export default function Workspace() {
                       !!busy ||
                       !ack ||
                       reviewed !== job.findings.length ||
-                      draftState !== "Draft saved"
+                      draftState !== "Draft saved" ||
+                      Object.values(customEditing).some(Boolean)
                     }
                     onClick={() =>
                       action("Recording your approval.", async () => {
@@ -729,7 +840,9 @@ export default function Workspace() {
                     Approve change set
                   </button>
                   <p className="hint">
-                    Approval locks this plan. Execution is a separate action.
+                    Finish or cancel any open replacement edits before
+                    approving. Approval locks this plan. Execution is a separate
+                    action.
                   </p>
                 </>
               ) : (
