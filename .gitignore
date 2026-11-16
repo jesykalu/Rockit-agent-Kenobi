@@ -12,3 +12,5 @@ supabase/.temp/
 app/.well-known/workflow/
 .workflow-data/
 /.swc
+
+.superpowers/
