@@ -1,3 +1,4 @@
+import { selectReviewMode } from "@/lib/review-mode";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireUser, sameOrigin } from "@/lib/auth";
@@ -59,12 +60,8 @@ export async function POST(request: Request) {
       .map((t) => t.trim())
       .filter(Boolean)
       .slice(0, 100);
-    const mode = form.get("mode") || "ai";
-    if (mode !== "ai" && mode !== "local")
-      throw new Error(
-        "Choose contextual review or explicitly select basic pattern scanning.",
-      );
-    const useAI = mode === "ai";
+    const selection = selectReviewMode(form.get("mode") || "ai");
+    const useAI = selection.mode === "ai";
     const id = randomUUID();
     const stored = [];
     for (const [i, file] of files.entries())
@@ -82,11 +79,13 @@ export async function POST(request: Request) {
       status: "processing",
       mode: useAI ? "ai" : "local",
       clientTerms: terms,
+      reviewEngine: selection.engine,
       files: stored,
       findings,
       warnings,
       processing: processing("discover"),
     };
+    job.processing!.engine = selection.engine || job.processing!.engine;
     await prepareChunks(job);
     if (!useAI) job.processing!.phase = "assess";
     await saveJob(job);

@@ -39,6 +39,7 @@ export interface Job {
   status: "uploading" | "processing" | "review" | "approved" | "complete";
   mode: "local" | "ai";
   clientTerms: string[];
+  reviewEngine?: "fast-v2";
   files: AssetFile[];
   findings: Finding[];
   warnings: string[];

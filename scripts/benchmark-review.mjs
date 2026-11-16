@@ -56,7 +56,7 @@ if (fixture === "dense") {
     {
       name: "brief.txt",
       bytes: Buffer.from(
-        "Confidential engagement: Northstar Bank commissioned Project Cedar. The client is also referred to internally as Maple. The proprietary system is BranchBridge. Non-public revenue forecast: £48 million. Private client contact: jane.smith@northstar.example.",
+        "Confidential engagement: Northstar Bank commissioned Project Cedar. The client is also referred to internally as Maple. The proprietary system is BranchBridge. Non-public revenue forecast: £48 million. Private client contact: jane.smith@northstar.example. Unannounced acquisition target: Larch Holdings.",
       ),
     },
     {
@@ -76,7 +76,7 @@ if (fixture === "dense") {
       ),
     },
   ];
-  seeds = [...seeds, "Maple"];
+  seeds = [...seeds, "Maple", "Larch Holdings"];
 }
 const reportFile = `outputs/fast-review-benchmark-${fixture}.json`;
 

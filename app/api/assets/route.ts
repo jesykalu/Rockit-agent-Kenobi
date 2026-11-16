@@ -1,3 +1,4 @@
+import { selectReviewMode } from "@/lib/review-mode";
 import { randomUUID } from "node:crypto";
 import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { z } from "zod";
@@ -22,13 +23,14 @@ export async function POST(request: Request) {
           )
           .min(1)
           .max(1500),
-        mode: z.enum(["local", "ai"]),
+        mode: z.enum(["local", "ai", "fast"]),
         terms: z.array(z.string()).max(100),
       })
       .parse(await request.json());
+    const selection = selectReviewMode(input.mode);
     if (input.files.reduce((n, f) => n + f.size, 0) > MAX_PACKAGE_BYTES)
       throw new Error("Maximum package size is 2 GB.");
-    if (input.mode === "ai" && !aiConfiguration().configured)
+    if (selection.mode === "ai" && !aiConfiguration().configured)
       throw new Error("Contextual AI is not configured.");
     const id = randomUUID(),
       inputs = input.files.map((f, i) => ({
@@ -44,7 +46,8 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
       source: `${inputs.length} uploaded asset(s)`,
       status: "uploading",
-      mode: input.mode,
+      mode: selection.mode,
+      reviewEngine: selection.engine,
       clientTerms: input.terms,
       files: [],
       findings: [],

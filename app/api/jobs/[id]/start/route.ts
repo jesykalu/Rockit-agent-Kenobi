@@ -24,6 +24,7 @@ export async function POST(
       }
       job.status = "processing";
       job.processing = processing("index");
+      job.processing.engine = job.reviewEngine || job.processing.engine;
       await saveJob(job);
     });
     await startReview(id, owner);
