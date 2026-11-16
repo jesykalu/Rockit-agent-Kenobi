@@ -17,13 +17,13 @@ Open http://127.0.0.1:3000 and enter the configured username and access key in t
 
 1. Import this repository into Vercel as a Next.js project with Node 22.
 2. Connect a Supabase Postgres database via Vercel Storage. Set `DATABASE_URL` to its pooled connection URL with TLS enabled. Use Supabase’s transaction pooler connection string (port 6543); prepared statements are disabled. The table lives in an unexposed private schema with RLS enabled and public access revoked. Connect as the schema owner on the server. Use a database dedicated to Kenobi; the application role must not be shared with untrusted tools.
-3. Pull development environment variables locally and run `npm run db:setup` once. The script creates only the `kenobi_private.reviews` table and its owner index. Do the same against any separate preview/production database.
+3. Pull development environment variables locally and run `npm run db:setup` once. The script creates the private review table and upload-staging tables with their indexes. Do the same against any separate preview/production database.
 4. Set `KENOBI_USERS` to a JSON object mapping colleague usernames to unique random access keys. Set `KENOBI_ORIGIN` to the exact canonical HTTPS origin, without a trailing slash. Preview deployments must have their own exact origin; requests from other origins are refused.
 5. Set `AZURE_FOUNDRY_ENDPOINT`, `AZURE_FOUNDRY_API_KEY`, and `AI_MODEL_ASSESSMENT` for semantic assessment. The endpoint must support the Anthropic Messages request format used by the reference Rockit agent. No live model is selected or contacted until AI review is explicitly selected.
 6. Optionally set `GITHUB_READ_TOKEN` to a fine-grained read-only token scoped to repositories approved for all tool users. A shared token grants every authenticated tool user read access to those repositories. Do not reuse a broad personal token.
 7. Deploy. The app refuses sign-in when auth/origin settings are missing, and refuses persistent operations on Vercel without Postgres.
 
-Direct uploads are capped at 4 MB to fit Vercel's request limit; GitHub imports are capped at 25 MB, 1,500 files. Extracted text is limited to 1.5 MB and reviews to 2,000 findings. Oversized inputs are rejected rather than silently truncated. Download ZIPs use authenticated 1 MB parts. Long model reviews may exceed the configured 300-second function duration; split large source sets. No background queue is included in this release.
+Uploads and GitHub imports are capped at 25 MB total and 1,500 files. Browser uploads are split into authenticated 1 MB parts, privately staged in Supabase, then assembled server-side. Successful assembly removes the staged parts; abandoned sessions expire after one hour and are purged when the next upload starts. Extracted text is limited to 1.5 MB and reviews to 2,000 findings. Oversized inputs are rejected rather than silently truncated. Download ZIPs use authenticated 1 MB parts. Long model reviews may exceed the configured 300-second function duration; split large source sets. No background queue is included in this release.
 
 ## Workflow and approval
 

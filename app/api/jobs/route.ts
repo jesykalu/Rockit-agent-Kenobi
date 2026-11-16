@@ -5,6 +5,7 @@ import { ingestUploads, githubFiles, MAX_BYTES } from "@/lib/ingest";
 import { assess, sourceDigest } from "@/lib/review";
 import { saveJob } from "@/lib/store";
 import type { Job } from "@/lib/types";
+import { consumeUpload } from "@/lib/uploads";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(request: Request) {
@@ -13,29 +14,30 @@ export async function POST(request: Request) {
     sameOrigin(request);
     if (Number(request.headers.get("content-length") || 0) > 4_100_000)
       throw new Error(
-        "Direct upload limit is 4 MB. Use a GitHub URL for larger source sets.",
+        "This request is too large. Refresh the page to use the 25 MB uploader.",
       );
     const form = await request.formData();
     const repo = String(form.get("repo") || "").trim();
+    const uploadId = String(form.get("upload_id") || "");
     const uploads = form
       .getAll("files")
       .filter((f): f is File => f instanceof File && f.size > 0);
-    if (repo && uploads.length)
+    if ((repo && (uploads.length || uploadId)) || (uploadId && uploads.length))
       throw new Error("Choose a repository or uploaded files, not both.");
-    if (!repo && !uploads.length)
+    if (!repo && !uploads.length && !uploadId)
       throw new Error("Choose files or supply a GitHub repository URL.");
     if (uploads.reduce((s, f) => s + f.size, 0) > 4_000_000)
-      throw new Error(
-        "Direct upload limit is 4 MB. Use a GitHub URL for larger source sets.",
-      );
+      throw new Error("Refresh the page to use the 25 MB uploader.");
     const entries = repo
       ? await githubFiles(repo)
-      : await Promise.all(
-          uploads.map(async (f) => ({
-            name: f.name,
-            bytes: new Uint8Array(await f.arrayBuffer()),
-          })),
-        );
+      : uploadId
+        ? await consumeUpload(uploadId, owner)
+        : await Promise.all(
+            uploads.map(async (f) => ({
+              name: f.name,
+              bytes: new Uint8Array(await f.arrayBuffer()),
+            })),
+          );
     const files = await ingestUploads(entries);
     if (
       files.reduce((sum, f) => sum + Buffer.byteLength(f.text, "utf8"), 0) >
@@ -63,7 +65,7 @@ export async function POST(request: Request) {
       id: randomUUID(),
       owner,
       createdAt: new Date().toISOString(),
-      source: repo || `${uploads.length} uploaded file(s)`,
+      source: repo || `${entries.length} uploaded file(s)`,
       sourceHash: sourceDigest(files),
       status: "review",
       mode: useAI ? "ai" : "local",

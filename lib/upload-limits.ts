@@ -1,0 +1,2 @@
+export const MAX_UPLOAD_BYTES = 25_000_000;
+export const UPLOAD_CHUNK_BYTES = 1_000_000;

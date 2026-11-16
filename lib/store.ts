@@ -6,7 +6,7 @@ import postgres from "postgres";
 import { AsyncLocalStorage } from "node:async_hooks";
 let client: ReturnType<typeof postgres> | undefined;
 const transaction = new AsyncLocalStorage<ReturnType<typeof postgres>>();
-function database() {
+export function database() {
   if (process.env.VERCEL && !process.env.DATABASE_URL)
     throw new Error(
       "Vercel deployment requires DATABASE_URL. Connect Postgres and run db:setup.",

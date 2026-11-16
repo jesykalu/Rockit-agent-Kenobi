@@ -2,7 +2,8 @@ import { unzipSync } from "fflate";
 import { XMLParser } from "fast-xml-parser";
 import type { AssetFile } from "./types";
 
-export const MAX_BYTES = 25_000_000;
+import { MAX_UPLOAD_BYTES } from "./upload-limits";
+export const MAX_BYTES = MAX_UPLOAD_BYTES;
 const MAX_EXPANDED = 60_000_000;
 export function safePath(path: string) {
   if (

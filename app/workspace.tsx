@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import type { Job, Decision } from "@/lib/types";
+import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/upload-limits";
 type ViewJob = Omit<Job, "files"> & {
   files: Omit<Job["files"][number], "content">[];
 };
@@ -161,6 +162,69 @@ export default function Workspace() {
                   e.preventDefault();
                   const form = new FormData(e.currentTarget);
                   action("Assessing your asset.", async () => {
+                    const files = form
+                      .getAll("files")
+                      .filter(
+                        (f): f is File => f instanceof File && f.size > 0,
+                      );
+                    if (files.length && String(form.get("repo") || "").trim())
+                      throw new Error(
+                        "Choose uploaded files or a repository, not both.",
+                      );
+                    if (
+                      files.reduce((sum, file) => sum + file.size, 0) >
+                      MAX_UPLOAD_BYTES
+                    )
+                      throw new Error(
+                        "Upload limit is 25 MB in total. Choose a smaller file set.",
+                      );
+                    if (files.length) {
+                      const upload = await post("/api/uploads", {
+                        files: files.map((file) => ({
+                          name: file.name,
+                          size: file.size,
+                        })),
+                      });
+                      const blob = new Blob(files);
+                      try {
+                        for (
+                          let offset = 0, part = 0;
+                          offset < blob.size;
+                          offset += UPLOAD_CHUNK_BYTES, part++
+                        ) {
+                          setBusy(
+                            `Uploading your files: ${Math.round((offset / blob.size) * 100)}%.`,
+                          );
+                          const response = await fetch(
+                            `/api/uploads/${upload.id}?part=${part}`,
+                            {
+                              method: "PUT",
+                              headers: {
+                                "Content-Type": "application/octet-stream",
+                              },
+                              body: blob.slice(
+                                offset,
+                                offset + UPLOAD_CHUNK_BYTES,
+                              ),
+                            },
+                          );
+                          if (!response.ok) {
+                            const result = await response.json();
+                            throw new Error(
+                              result.error || "Upload failed. Please retry.",
+                            );
+                          }
+                        }
+                        form.delete("files");
+                        form.set("upload_id", upload.id);
+                      } catch (error) {
+                        await fetch(`/api/uploads/${upload.id}`, {
+                          method: "DELETE",
+                        }).catch(() => {});
+                        throw error;
+                      }
+                    }
+                    setBusy("Upload complete. Assessing your asset.");
                     const data = await post("/api/jobs", form);
                     history.replaceState(null, "", `?review=${data.id}`);
                     await load(data.id);
@@ -177,8 +241,8 @@ export default function Workspace() {
                   aria-describedby="file-help"
                 />
                 <p className="hint" id="file-help">
-                  HTML, code, text-based PDF, PPTX or ZIP. Up to 4 MB per upload
-                  / 1,500 files. GitHub imports: up to 25 MB. Legacy .ppt files
+                  HTML, code, text-based PDF, PPTX or ZIP. Up to 25 MB total /
+                  1,500 files. GitHub imports: up to 25 MB. Legacy .ppt files
                   need conversion to .pptx.
                 </p>
                 <div className="separator">or connect a repository</div>
