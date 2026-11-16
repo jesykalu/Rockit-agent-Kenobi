@@ -227,7 +227,7 @@ export default function Workspace({
                 onSubmit={(e) => {
                   e.preventDefault();
                   const form = new FormData(e.currentTarget);
-                  action("Assessing your asset.", async () => {
+                  action("Preparing your upload.", async () => {
                     const files = form
                       .getAll("files")
                       .filter(
@@ -255,6 +255,7 @@ export default function Workspace({
                       history.replaceState(null, "", `?review=${prepared.id}`);
                       localStorage.setItem("kenobi-last-review", prepared.id);
                       for (const [i, file] of files.entries()) {
+                        setBusy(`Uploading file ${i + 1} of ${files.length}: connecting to storage.`);
                         await uploadBlob(prepared.uploads[i].key, file, {
                           access: "private",
                           token: prepared.uploads[i].token,

@@ -24,7 +24,7 @@ export function proxy(request: NextRequest) {
   response.headers.set("Referrer-Policy", "no-referrer");
   response.headers.set(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.blob.vercel-storage.com https://blob.vercel-storage.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://vercel.com/api/blob/ https://*.blob.vercel-storage.com https://blob.vercel-storage.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
   );
   return response;
 }
