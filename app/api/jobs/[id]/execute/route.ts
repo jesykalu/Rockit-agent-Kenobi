@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser, sameOrigin } from "@/lib/auth";
 import { readJob, saveJob, locked, writeOutput } from "@/lib/store";
 import { verifyApproval } from "@/lib/review";
-import { processing } from "@/lib/durable-review";
+import { exportProcessing } from "@/lib/durable-review";
 import { startReview } from "@/lib/start-review";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,10 +20,7 @@ export async function POST(
       if (job.status === "complete") return;
       verifyApproval(job);
       if (job.processing) return;
-      job.processing = {
-        ...processing("export", job.files.length),
-        outputs: [],
-      };
+      job.processing = exportProcessing(job);
       await saveJob(job);
       queued = true;
     });

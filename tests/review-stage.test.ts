@@ -31,3 +31,12 @@ it("keeps assessment progress continuous between AI passes", () => {
     ).max,
   ).toBe(176);
 });
+it("labels the fast engine stages without implying discovery-only work", () => {
+  const result = assessmentProgress(
+    { phase: "discover", cursor: 1, total: 2, engine: "fast-v2" } as Parameters<
+      typeof assessmentProgress
+    >[0],
+    "ai",
+  );
+  expect(result.label).toBe("Reviewing content and client context");
+});

@@ -1,3 +1,4 @@
+import { selectReviewMode } from "@/lib/review-mode";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireUser, sameOrigin } from "@/lib/auth";
@@ -8,7 +9,7 @@ import type { Job } from "@/lib/types";
 import { consumeUpload } from "@/lib/uploads";
 import { MAX_REVIEW_TEXT_BYTES } from "@/lib/upload-limits";
 import { saveAsset } from "@/lib/asset-storage";
-import { processing } from "@/lib/durable-review";
+import { processing, prepareChunks } from "@/lib/durable-review";
 import { startReview } from "@/lib/start-review";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -59,12 +60,8 @@ export async function POST(request: Request) {
       .map((t) => t.trim())
       .filter(Boolean)
       .slice(0, 100);
-    const mode = form.get("mode") || "ai";
-    if (mode !== "ai" && mode !== "local")
-      throw new Error(
-        "Choose contextual review or explicitly select basic pattern scanning.",
-      );
-    const useAI = mode === "ai";
+    const selection = selectReviewMode(form.get("mode") || "ai");
+    const useAI = selection.mode === "ai";
     const id = randomUUID();
     const stored = [];
     for (const [i, file] of files.entries())
@@ -82,20 +79,15 @@ export async function POST(request: Request) {
       status: "processing",
       mode: useAI ? "ai" : "local",
       clientTerms: terms,
+      reviewEngine: selection.engine,
       files: stored,
       findings,
       warnings,
       processing: processing("discover"),
     };
-    job.processing!.chunks = files.flatMap((f, file) =>
-      f.kind === "binary"
-        ? []
-        : Array.from({ length: Math.ceil(f.text.length / 24000) }, (_, i) => ({
-            file,
-            offset: i * 24000,
-          })),
-    );
-    job.processing!.total = job.processing!.chunks.length;
+    job.processing!.engine = selection.engine || job.processing!.engine;
+    await prepareChunks(job);
+    if (!useAI) job.processing!.phase = "assess";
     await saveJob(job);
     await startReview(id, owner);
     return NextResponse.json({ id: job.id });

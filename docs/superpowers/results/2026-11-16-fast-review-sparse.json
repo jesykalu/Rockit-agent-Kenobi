@@ -1,0 +1,157 @@
+{
+  "fixture": "sparse",
+  "concurrency": 4,
+  "qualityPassed": true,
+  "results": [
+    {
+      "trial": 0,
+      "engine": "legacy",
+      "elapsedMs": 47112,
+      "bytes": 539283,
+      "findings": 316,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 310,
+      "benignExamples": [
+        "Reusable interface component with accessible navigation and responsive layout.",
+        "Reusable interface component with accessible navigation and responsive layout.",
+        "Reusable interface component with accessible navigation and responsive layout."
+      ],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "contextual-v1",
+        "reviewedChunks": 23,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 39670,
+          "uncachedResults": 46
+        }
+      }
+    },
+    {
+      "trial": 0,
+      "engine": "fast-v2",
+      "elapsedMs": 24767,
+      "bytes": 539283,
+      "findings": 6,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 0,
+      "benignExamples": [],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "fast-v2.2",
+        "reviewedChunks": 1,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 19599,
+          "uncachedResults": 1
+        }
+      }
+    },
+    {
+      "trial": 1,
+      "engine": "fast-v2",
+      "elapsedMs": 14895,
+      "bytes": 539283,
+      "findings": 6,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 0,
+      "benignExamples": [],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "fast-v2.2",
+        "reviewedChunks": 1,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 11895,
+          "uncachedResults": 1
+        }
+      }
+    },
+    {
+      "trial": 1,
+      "engine": "legacy",
+      "elapsedMs": 41625,
+      "bytes": 539283,
+      "findings": 222,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 216,
+      "benignExamples": [
+        "Reusable interface component with accessible navigation and responsive layout.",
+        "Reusable interface component with accessible navigation and responsive layout.",
+        "Reusable interface component with accessible navigation and responsive layout."
+      ],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "contextual-v1",
+        "reviewedChunks": 23,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 37364,
+          "uncachedResults": 46
+        }
+      }
+    },
+    {
+      "trial": 2,
+      "engine": "legacy",
+      "elapsedMs": 44503,
+      "bytes": 539283,
+      "findings": 222,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 216,
+      "benignExamples": [
+        "Reusable interface component with accessible navigation and responsive layout.",
+        "Reusable interface component with accessible navigation and responsive layout.",
+        "Reusable interface component with accessible navigation and responsive layout."
+      ],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "contextual-v1",
+        "reviewedChunks": 23,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 39907,
+          "uncachedResults": 46
+        }
+      }
+    },
+    {
+      "trial": 2,
+      "engine": "fast-v2",
+      "elapsedMs": 14771,
+      "bytes": 539283,
+      "findings": 6,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 0,
+      "benignExamples": [],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "fast-v2.2",
+        "reviewedChunks": 1,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 10679,
+          "uncachedResults": 1
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "fixture": "dense",
+  "concurrency": 4,
+  "qualityPassed": true,
+  "results": [
+    {
+      "trial": 0,
+      "engine": "legacy",
+      "elapsedMs": 26753,
+      "bytes": 520,
+      "findings": 12,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 0,
+      "benignExamples": [],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "contextual-v1",
+        "reviewedChunks": 3,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 17867,
+          "uncachedResults": 6
+        }
+      }
+    },
+    {
+      "trial": 0,
+      "engine": "fast-v2",
+      "elapsedMs": 27972,
+      "bytes": 520,
+      "findings": 13,
+      "missing": [],
+      "falseSpacing": false,
+      "benignFindings": 0,
+      "benignExamples": [],
+      "exactEvidence": true,
+      "validSyntax": true,
+      "assessment": {
+        "model": "gpt-4.1-2025-04-14",
+        "version": "fast-v2.2",
+        "reviewedChunks": 3,
+        "metrics": {
+          "cacheHits": 0,
+          "elapsedMs": 22210,
+          "uncachedResults": 6
+        }
+      }
+    }
+  ]
+}

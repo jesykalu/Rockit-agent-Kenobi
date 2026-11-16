@@ -1,3 +1,12 @@
+import {
+  analyzeRange,
+  analysisKey,
+  analysisSchema,
+  planRanges,
+  validateAnalysis,
+  FAST_VERSION,
+} from "./fast-review";
+import { cachedRange } from "./review-cache";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { ZipFile } from "yazl";
@@ -22,6 +31,13 @@ export function processing(
 ): NonNullable<Job["processing"]> {
   return {
     phase,
+    engine:
+      process.env.KENOBI_REVIEW_ENGINE === "fast-v2" ? "fast-v2" : undefined,
+    metrics: {
+      uncachedResults: 0,
+      cacheHits: 0,
+      startedAt: new Date().toISOString(),
+    },
     cursor: 0,
     total,
     updatedAt: new Date().toISOString(),
@@ -31,11 +47,23 @@ export function processing(
     findings: [],
   };
 }
-function chunks(job: Job, output = false) {
+export function exportProcessing(job: Job): NonNullable<Job["processing"]> {
+  return {
+    ...processing("export", job.files.length),
+    engine: job.assessment?.engine,
+    outputs: [],
+  };
+}
+export async function prepareChunks(job: Job, output = false) {
   const p = job.processing!;
   p.chunks = [];
   for (const [file, f] of (output ? p.outputs! : job.files).entries())
     if (f.kind !== "binary") {
+      if (p.engine === "fast-v2" && job.mode === "ai") {
+        const ranges = f.reviewRanges || planRanges((await loadAsset(f)).text);
+        for (const range of ranges) p.chunks.push({ file, ...range });
+        continue;
+      }
       const offsets =
         f.chunkOffsets ||
         Array.from(
@@ -102,7 +130,7 @@ export async function advanceReview(
             "No reviewable source files. Inspect excluded files or upload a supported asset.",
           );
         job.sourceHash = sourceDigest(job.files);
-        chunks(job);
+        await prepareChunks(job);
         p.phase = job.mode === "ai" ? "discover" : "assess";
         job.warnings.push(
           "Dependencies, Git history, caches and unsupported binaries are excluded. Check the source-file list for individual exclusions. Images and original document metadata are not assessed.",
@@ -141,7 +169,7 @@ export async function advanceReview(
         }
         p.cursor++;
       } else {
-        chunks(job, true);
+        await prepareChunks(job, true);
         p.phase = job.mode === "ai" ? "verify-discover" : "verify-assess";
       }
     } else if (p.phase === "package") {
@@ -240,7 +268,7 @@ export async function advanceReview(
           p.cursor + Math.max(1, Math.min(4, concurrency)),
         );
         const loaded = new Map<number, ReturnType<typeof loadAsset>>();
-        const results = await Promise.all(
+        const settled = await Promise.allSettled(
           sections.map(async (section) => {
             if (!loaded.has(section.file))
               loaded.set(
@@ -250,37 +278,124 @@ export async function advanceReview(
             const file = await loaded.get(section.file)!;
             const text = reviewText(file.text).slice(
               section.offset,
-              section.offset + 26000,
+              section.offset + (section.length || 26000),
             );
-            const entities =
-              text.trim() && discovery && job.mode === "ai"
-                ? await discoverChunk(file.path, text, job.clientTerms)
-                : [];
-            const items: Partial<Finding>[] =
-              text.trim() && !discovery && job.mode === "ai"
-                ? await reviewChunk(
+            const fast = p.engine === "fast-v2" && job.mode === "ai";
+            const purpose = residual
+              ? ("residual" as const)
+              : ("initial" as const);
+            let entities: NonNullable<Job["assessment"]>["context"] = [];
+            let items: Partial<Finding>[] = [];
+            let hit: boolean | undefined;
+            if (text.trim() && fast) {
+              const key = analysisKey({
+                path: file.path,
+                text,
+                terms: job.clientTerms,
+                purpose,
+                model: aiConfiguration().model,
+                priorContext: job.assessment?.context || [],
+                phase: discovery ? "combined" : "verify",
+                context: discovery ? [] : p.context,
+              });
+              const result = await cachedRange(
+                id,
+                key,
+                async () =>
+                  discovery
+                    ? analyzeRange(
+                        file.path,
+                        text,
+                        job.clientTerms,
+                        purpose,
+                        job.assessment?.context,
+                      )
+                    : {
+                        entities: [],
+                        uncertain: [],
+                        findings: await reviewChunk(
+                          file.path,
+                          text,
+                          job.clientTerms,
+                          p.context,
+                          purpose,
+                          job.assessment?.context,
+                        ),
+                      },
+                (value) =>
+                  validateAnalysis(
                     file.path,
                     text,
-                    job.clientTerms,
-                    p.context,
-                    residual ? "residual" : "initial",
-                    job.assessment?.context,
-                  )
-                : [];
-            return { section, file, text, entities, items };
+                    analysisSchema.parse(value),
+                  ),
+              );
+              entities = result.value.entities.map((e) => ({
+                ...e,
+                path: file.path,
+              }));
+              entities.push(
+                ...result.value.uncertain.map((original) => ({
+                  path: file.path,
+                  original,
+                  type: "uncertain",
+                  meaning:
+                    "Ambiguous passage: check against all client context and flag for human inspection.",
+                })),
+              );
+              items = result.value.findings;
+              hit = result.hit;
+            } else if (text.trim()) {
+              if (discovery && job.mode === "ai")
+                entities = await discoverChunk(
+                  file.path,
+                  text,
+                  job.clientTerms,
+                );
+              if (job.mode === "ai") hit = false;
+              if (!discovery && job.mode === "ai")
+                items = await reviewChunk(
+                  file.path,
+                  text,
+                  job.clientTerms,
+                  p.context,
+                  purpose,
+                  job.assessment?.context,
+                );
+            }
+            return { section, file, text, entities, items, hit };
           }),
         );
-        for (const { section, file, text, entities, items } of results) {
+        const failure = settled.find(
+          (r): r is PromiseRejectedResult => r.status === "rejected",
+        );
+        if (failure) throw failure.reason;
+        const results = settled.flatMap((r) =>
+          r.status === "fulfilled" ? [r.value] : [],
+        );
+        for (const { section, file, text, entities, items, hit } of results) {
+          if (p.metrics && hit !== undefined) {
+            if (hit) p.metrics.cacheHits++;
+            else p.metrics.uncachedResults++;
+          }
           if (text.trim()) {
             if (discovery && job.mode === "ai") {
               for (const e of entities)
-                if (!p.context.some((c) => c.original === e.original))
+                if (
+                  !p.context.some(
+                    (c) => c.original === e.original && c.type === e.type,
+                  )
+                )
                   p.context.push(e);
+              if (entities.some((e) => e.type === "uncertain"))
+                job.warnings.push(
+                  `${file.path}: ambiguous passages were included in shared-context verification and need human inspection.`,
+                );
               if (JSON.stringify(p.context).length > 100000)
                 throw new Error(
                   "Too much distinct client context for one assessment. Narrow the source scope. Completed progress is retained.",
                 );
-            } else if (!discovery) {
+            }
+            if (!discovery || p.engine === "fast-v2") {
               items.push(...scanFile({ ...file, text }, job.clientTerms));
               for (const item of items) {
                 if (
@@ -313,6 +428,18 @@ export async function advanceReview(
                       line: file.text.slice(0, start).split("\n").length,
                       source: item.source || "ai",
                     } as Finding);
+                  else if (
+                    !p.findings!.some(
+                      (f) =>
+                        f.path === file.path &&
+                        f.start === start &&
+                        f.end === end &&
+                        f.replacement === item.replacement,
+                    )
+                  )
+                    job.warnings.push(
+                      `${file.path}: overlapping or conflicting proposals require manual inspection; the first exact edit was retained.`,
+                    );
                   at = text.indexOf(item.original, at + item.original.length);
                 }
               }
@@ -325,7 +452,12 @@ export async function advanceReview(
           p.cursor++;
         }
       } else if (discovery) {
-        p.cursor = 0;
+        p.cursor =
+          p.engine === "fast-v2" &&
+          p.chunks.length <= 1 &&
+          !p.context.some((e) => e.type === "uncertain")
+            ? p.chunks.length
+            : 0;
         p.phase = residual ? "verify-assess" : "assess";
       } else if (residual) {
         p.phase = "package";
@@ -336,7 +468,15 @@ export async function advanceReview(
         job.status = "review";
         if (job.mode === "ai")
           job.assessment = {
-            version: REVIEW_VERSION,
+            version: p.engine === "fast-v2" ? FAST_VERSION : REVIEW_VERSION,
+            engine: p.engine,
+            metrics: p.metrics
+              ? {
+                  uncachedResults: p.metrics.uncachedResults,
+                  cacheHits: p.metrics.cacheHits,
+                  elapsedMs: Date.now() - Date.parse(p.metrics.startedAt),
+                }
+              : undefined,
             provider: "OpenAI",
             model: aiConfiguration().model,
             reviewedChunks: p.chunks.length,

@@ -8,6 +8,7 @@ export interface AssetFile {
   textLength?: number;
   textHash?: string;
   chunkOffsets?: number[];
+  reviewRanges?: { offset: number; length: number }[];
   exportKey?: string;
 }
 export interface Finding {
@@ -38,10 +39,13 @@ export interface Job {
   status: "uploading" | "processing" | "review" | "approved" | "complete";
   mode: "local" | "ai";
   clientTerms: string[];
+  reviewEngine?: "fast-v2";
   files: AssetFile[];
   findings: Finding[];
   warnings: string[];
   processing?: {
+    engine?: "fast-v2";
+    metrics?: { uncachedResults: number; cacheHits: number; startedAt: string };
     phase:
       | "index"
       | "discover"
@@ -58,7 +62,7 @@ export interface Job {
     runId?: string;
     generation: string;
     context: NonNullable<Job["assessment"]>["context"];
-    chunks: { file: number; offset: number }[];
+    chunks: { file: number; offset: number; length?: number }[];
     outputs?: AssetFile[];
   };
   inputs?: { path: string; key: string; size: number }[];
@@ -75,6 +79,8 @@ export interface Job {
     excluded?: string;
   }[];
   assessment?: {
+    engine?: "fast-v2";
+    metrics?: { uncachedResults: number; cacheHits: number; elapsedMs: number };
     version: string;
     provider: string;
     model: string;
