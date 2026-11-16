@@ -1,2 +1,4 @@
 export const MAX_UPLOAD_BYTES = 25_000_000;
 export const UPLOAD_CHUNK_BYTES = 1_000_000;
+export const MAX_REVIEW_TEXT_BYTES = 25_000_000;
+export const SOURCE_PAGE_CHARS = 20_000;

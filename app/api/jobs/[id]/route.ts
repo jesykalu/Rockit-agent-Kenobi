@@ -9,7 +9,10 @@ export async function GET(request: Request, { params }: Context) {
     const job = await readJob((await params).id, requireUser(request));
     return NextResponse.json({
       ...job,
-      files: job.files.map(({ content, ...rest }) => rest),
+      files: job.files.map(({ content, text, ...rest }) => ({
+        ...rest,
+        textLength: text.length,
+      })),
     });
   } catch {
     return NextResponse.json({ error: "Review not found." }, { status: 404 });

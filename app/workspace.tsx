@@ -3,7 +3,9 @@ import { useEffect, useState, useRef } from "react";
 import type { Job, Decision } from "@/lib/types";
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/upload-limits";
 type ViewJob = Omit<Job, "files"> & {
-  files: Omit<Job["files"][number], "content">[];
+  files: (Omit<Job["files"][number], "content" | "text"> & {
+    textLength: number;
+  })[];
 };
 export default function Workspace() {
   const [job, setJob] = useState<ViewJob | null>(null),
@@ -17,6 +19,16 @@ export default function Workspace() {
   const [draftState, setDraftState] = useState("Saved");
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const draftVersion = useRef(0);
+  const [sourcePage, setSourcePage] = useState(0);
+  const [source, setSource] = useState<{
+    text: string;
+    page: number;
+    totalPages: number;
+    start: number;
+    end: number;
+    totalChars: number;
+  } | null>(null);
+  const [sourceError, setSourceError] = useState("");
   async function load(id: string) {
     const res = await fetch(`/api/jobs/${id}`);
     const data = await res.json();
@@ -35,6 +47,25 @@ export default function Workspace() {
     const id = new URLSearchParams(location.search).get("review");
     if (id) load(id).catch((e) => setError(e.message));
   }, []);
+  useEffect(() => {
+    if (!job || !selected) return;
+    const controller = new AbortController();
+    const fileIndex = job.files.findIndex((f) => f.path === selected);
+    setSource(null);
+    setSourceError("");
+    fetch(`/api/jobs/${job.id}/source?file=${fileIndex}&page=${sourcePage}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        setSource(data);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setSourceError(error.message);
+      });
+    return () => controller.abort();
+  }, [job?.id, selected, sourcePage]);
   useEffect(() => {
     if (!job || job.status !== "review") return;
     const version = ++draftVersion.current;
@@ -434,7 +465,10 @@ export default function Workspace() {
                   <button
                     key={f.path}
                     className={selected === f.path ? "selected" : ""}
-                    onClick={() => setSelected(f.path)}
+                    onClick={() => {
+                      setSelected(f.path);
+                      setSourcePage(0);
+                    }}
                   >
                     <span>{f.path}</span>
                     <small>
@@ -449,9 +483,55 @@ export default function Workspace() {
                 <h2>{selected}</h2>
                 <details className="source">
                   <summary>Inspect extracted source text</summary>
+                  {sourceError && (
+                    <p role="alert">{sourceError} Refresh to retry.</p>
+                  )}
+                  {source && source.totalPages > 1 && (
+                    <div>
+                      <p>
+                        Page {source.page + 1} of {source.totalPages} ·
+                        characters {(source.start + 1).toLocaleString()}–
+                        {source.end.toLocaleString()} of{" "}
+                        {source.totalChars.toLocaleString()}. The full source is
+                        assessed; these pages only control what is displayed.
+                      </p>
+                      <div className="decision-row">
+                        <button
+                          type="button"
+                          disabled={sourcePage === 0}
+                          onClick={() => setSourcePage(0)}
+                        >
+                          First page
+                        </button>
+                        <button
+                          type="button"
+                          disabled={sourcePage === 0}
+                          onClick={() => setSourcePage((p) => p - 1)}
+                        >
+                          Previous page
+                        </button>
+                        <button
+                          type="button"
+                          disabled={sourcePage >= source.totalPages - 1}
+                          onClick={() => setSourcePage((p) => p + 1)}
+                        >
+                          Next page
+                        </button>
+                        <button
+                          type="button"
+                          disabled={sourcePage >= source.totalPages - 1}
+                          onClick={() => setSourcePage(source.totalPages - 1)}
+                        >
+                          Last page
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <pre>
-                    {selectedFile?.text ||
-                      "No reviewable text. This file will be excluded."}
+                    {!source
+                      ? "Loading source text…"
+                      : source.text ||
+                        "No reviewable text is available for this file."}
                   </pre>
                 </details>
                 {!visible.length && (

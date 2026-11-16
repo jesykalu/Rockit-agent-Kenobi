@@ -6,6 +6,7 @@ import { assess, sourceDigest } from "@/lib/review";
 import { saveJob } from "@/lib/store";
 import type { Job } from "@/lib/types";
 import { consumeUpload } from "@/lib/uploads";
+import { MAX_REVIEW_TEXT_BYTES } from "@/lib/upload-limits";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(request: Request) {
@@ -41,10 +42,10 @@ export async function POST(request: Request) {
     const files = await ingestUploads(entries);
     if (
       files.reduce((sum, f) => sum + Buffer.byteLength(f.text, "utf8"), 0) >
-      1_500_000
+      MAX_REVIEW_TEXT_BYTES
     )
       throw new Error(
-        "Extracted source exceeds 1.5 MB. Split the review into smaller source sets.",
+        "Extracted source exceeds the 25 MB review allowance. Choose a smaller source set.",
       );
     if (!files.some((f) => f.kind !== "binary"))
       throw new Error(

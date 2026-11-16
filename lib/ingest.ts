@@ -2,7 +2,7 @@ import { unzipSync } from "fflate";
 import { XMLParser } from "fast-xml-parser";
 import type { AssetFile } from "./types";
 
-import { MAX_UPLOAD_BYTES } from "./upload-limits";
+import { MAX_UPLOAD_BYTES, MAX_REVIEW_TEXT_BYTES } from "./upload-limits";
 export const MAX_BYTES = MAX_UPLOAD_BYTES;
 const MAX_EXPANDED = 60_000_000;
 export function safePath(path: string) {
@@ -106,9 +106,9 @@ export async function extract(
       );
     }
   }
-  if (file.text.length > 500_000)
+  if (Buffer.byteLength(file.text, "utf8") > MAX_REVIEW_TEXT_BYTES)
     throw new Error(
-      `A file exceeds the 500,000 character review limit. Split it before uploading.`,
+      `Extracted text exceeds the 25 MB review allowance. Choose a smaller source set.`,
     );
   return file;
 }
