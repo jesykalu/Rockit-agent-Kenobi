@@ -44,3 +44,8 @@ A fresh reviewer found two important issues: uncertain evidence propagation and 
 Select **Faster contextual review — preview** under Assessment method for a new review. This does not restart or alter existing reviews. Its measured advantage is on the larger sparse fixture; small multi-file reviews may see no benefit.
 
 A stronger claim of quality parity needs a representative corpus and independent human annotations. A 10× claim needs new measured results; this implementation does not justify it.
+
+## Final validation and delivery
+48 automated tests passed; 3 optional tests skipped. Typecheck and production build passed. The hosted preview completed upload, review, explicit approval, export, residual check and download; a manually retained binary remained byte-identical. The browser showed the preview option. No existing user review was restarted or altered.
+
+Draft source PR: https://github.com/jesykalu/Rockit-agent-Kenobi/pull/1
