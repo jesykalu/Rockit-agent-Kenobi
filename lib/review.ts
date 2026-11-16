@@ -23,8 +23,8 @@ export const sourceDigest = (files: AssetFile[]) =>
   digest(
     files.map((f) => ({
       path: f.path,
-      content: f.content,
-      text: f.text,
+      content: f.textHash || f.content,
+      text: f.storageKey ? "" : f.text,
       kind: f.kind,
     })),
   );
@@ -173,6 +173,7 @@ export const approvalSchema = z.object({
   sourceHash: z.string(),
   acknowledged: z.literal(true),
   brand: z.boolean(),
+  retainedFiles: z.array(z.string()).max(1500).default([]),
   decisions: z.array(
     z.object({
       id: z.string(),
@@ -211,7 +212,17 @@ export function approve(job: Job, input: unknown): Job {
         "An accepted change must differ from the original. Reject it to keep the original text.",
       );
   }
+  if (
+    new Set(parsed.retainedFiles).size !== parsed.retainedFiles.length ||
+    parsed.retainedFiles.some(
+      (path) => !job.files.some((f) => f.path === path && f.kind === "binary"),
+    )
+  )
+    throw new Error(
+      "Only listed unassessed binary files may be manually retained.",
+    );
   const approval = {
+    retainedFiles: parsed.retainedFiles,
     reviewer: parsed.reviewer,
     at: new Date().toISOString(),
     decisions: parsed.decisions,

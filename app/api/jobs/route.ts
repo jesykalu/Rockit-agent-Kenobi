@@ -2,11 +2,14 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireUser, sameOrigin } from "@/lib/auth";
 import { ingestUploads, githubFiles, MAX_BYTES } from "@/lib/ingest";
-import { assess, sourceDigest } from "@/lib/review";
+import { scanFile, sourceDigest } from "@/lib/review";
 import { saveJob } from "@/lib/store";
 import type { Job } from "@/lib/types";
 import { consumeUpload } from "@/lib/uploads";
 import { MAX_REVIEW_TEXT_BYTES } from "@/lib/upload-limits";
+import { saveAsset } from "@/lib/asset-storage";
+import { processing } from "@/lib/durable-review";
+import { startReview } from "@/lib/start-review";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(request: Request) {
@@ -62,30 +65,39 @@ export async function POST(request: Request) {
         "Choose contextual review or explicitly select basic pattern scanning.",
       );
     const useAI = mode === "ai";
-    const { findings, warnings, ...assessment } = await assess(
-      files,
-      terms,
-      useAI,
+    const id = randomUUID();
+    const stored = [];
+    for (const [i, file] of files.entries())
+      stored.push(await saveAsset(id, i, file));
+    const findings: Job["findings"] = [];
+    const warnings = files.flatMap((f) =>
+      f.warnings.map((w) => `${f.path}: ${w}`),
     );
-    if (findings.length > 2000)
-      throw new Error(
-        "More than 2,000 findings. Split this source set for a manageable review.",
-      );
     const job: Job = {
-      id: randomUUID(),
+      id,
       owner,
       createdAt: new Date().toISOString(),
       source: repo || `${entries.length} uploaded file(s)`,
-      sourceHash: sourceDigest(files),
-      status: "review",
+      sourceHash: sourceDigest(stored),
+      status: "processing",
       mode: useAI ? "ai" : "local",
       clientTerms: terms,
-      files,
+      files: stored,
       findings,
       warnings,
-      ...assessment,
+      processing: processing("discover"),
     };
+    job.processing!.chunks = files.flatMap((f, file) =>
+      f.kind === "binary"
+        ? []
+        : Array.from({ length: Math.ceil(f.text.length / 24000) }, (_, i) => ({
+            file,
+            offset: i * 24000,
+          })),
+    );
+    job.processing!.total = job.processing!.chunks.length;
     await saveJob(job);
+    await startReview(id, owner);
     return NextResponse.json({ id: job.id });
   } catch (error) {
     return NextResponse.json(

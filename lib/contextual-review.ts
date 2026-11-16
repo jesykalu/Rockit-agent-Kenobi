@@ -10,7 +10,7 @@ export function aiConfiguration() {
     model: process.env.OPENAI_REVIEW_MODEL || "gpt-4.1-2025-04-14",
   };
 }
-const evidenceSchema = z.object({
+export const evidenceSchema = z.object({
   entities: z.array(
     z.object({
       original: z.string(),
@@ -26,7 +26,7 @@ const evidenceSchema = z.object({
     }),
   ),
 });
-const findingsSchema = z.object({
+export const findingsSchema = z.object({
   findings: z.array(
     z.object({
       original: z.string(),
@@ -101,7 +101,7 @@ export async function modelJson<T>(
   }
 }
 // Keep offsets intact while avoiding charging for embedded binary image encodings.
-function reviewText(text: string) {
+export function reviewText(text: string) {
   return text.replace(/data:[\w/+.-]+;base64,[A-Za-z0-9+/=\r\n]+/g, (value) =>
     " ".repeat(value.length),
   );
@@ -139,22 +139,9 @@ export async function contextualReview(
       results.push(...(await Promise.all(chunks.slice(i, i + 4).map(fn))));
     return results;
   }
-  const discovery = await batches(async (chunk) => {
-    const data = await modelJson(
-      evidenceSchema,
-      `Discover client and engagement context. Extract exact short quotes identifying clients, project codenames, internal systems, distinctive locations, strategy and commercial relationships. Include indirect identifiers even if no client names were supplied. Each original must occur verbatim in this chunk or its path. Explain its meaning without inventing facts. Return at most 30 entities.`,
-      { path: chunk.file.path, untrustedText: chunk.text, knownTerms: terms },
-      signal,
-    );
-    return data.entities
-      .filter(
-        (e) =>
-          e.original &&
-          (chunk.text.includes(e.original) ||
-            chunk.file.path.includes(e.original)),
-      )
-      .map((e) => ({ ...e, path: chunk.file.path }));
-  });
+  const discovery = await batches((chunk) =>
+    discoverChunk(chunk.file.path, chunk.text, terms, signal),
+  );
   const seen = new Set<string>();
   for (const entity of discovery.flat())
     if (!seen.has(entity.original)) {
@@ -166,21 +153,18 @@ export async function contextualReview(
       "Too much distinct client context for one review. Split this source set; no partial assessment was saved.",
     );
   const findings: Finding[] = [];
-  const results = await batches(async (chunk) => {
-    const data = await modelJson(
-      findingsSchema,
-      `Assess this chunk using the shared evidence from ALL files. Find client names, domains, project codenames, proprietary products and processes, internal systems, locations or combinations that identify the engagement; confidential plans, contract commitments, pricing, discounts, margins, forecasts and performance; personal details and secrets. Distinguish CSS spacing from financial margins. Preserve reusable functionality and industry knowledge. Propose neutral, meaningful generalisations, not blanket deletion and not fabricated replacement facts. Prefer readable descriptions such as "a retail bank", "the transformation programme" or "the internal platform" over bracketed placeholders like [Client Name]. Preserve the sentence grammar. Use plain-English category headings, not identifiers or snake_case. For code/HTML preserve syntax, IDs, selectors and behaviour; replace only sensitive values or visible labels, never entire code blocks to redact a word. Each original must be an EXACT non-empty substring of this chunk. Cover each applicable risk category independently, including confidential strategy even when client names are also present. Prefer the smallest meaningful non-overlapping span. Use consistent neutral descriptions for the same entities across files. Give a specific plain-English risk (reason) and plain-English proposed action (suggestion), plus confidence. No-op edits are forbidden. ${purpose === "residual" ? "This is a SECOND CHECK of the generated output; identify any remaining or newly introduced sensitivity. Do not assume human approval makes retained information safe." : "The human will approve exact replacements before execution."}`,
-      {
-        path: chunk.file.path,
-        untrustedText: chunk.text,
-        sharedEvidence: context,
-        knownTerms: terms,
-        originalEngagementEvidence: priorContext,
-      },
+  const results = await batches(async (chunk) => ({
+    chunk,
+    items: await reviewChunk(
+      chunk.file.path,
+      chunk.text,
+      terms,
+      context,
+      purpose,
+      priorContext,
       signal,
-    );
-    return { chunk, items: data.findings };
-  });
+    ),
+  }));
   for (const { chunk, items } of results)
     for (const item of items) {
       if (
@@ -235,4 +219,48 @@ export async function contextualReview(
       purpose,
     },
   };
+}
+
+export async function discoverChunk(
+  path: string,
+  text: string,
+  terms: string[],
+  signal?: AbortSignal,
+) {
+  const data = await modelJson(
+    evidenceSchema,
+    `Discover client and engagement context. Extract exact short quotes identifying clients, project codenames, internal systems, distinctive locations, strategy and commercial relationships. Include indirect identifiers even if no client names were supplied. Each original must occur verbatim in this chunk or its path. Explain its meaning without inventing facts. Return at most 30 entities.`,
+    { path, untrustedText: text, knownTerms: terms },
+    signal,
+  );
+  return data.entities
+    .filter(
+      (e) =>
+        e.original && (text.includes(e.original) || path.includes(e.original)),
+    )
+    .map((e) => ({ ...e, path }));
+}
+export async function reviewChunk(
+  path: string,
+  text: string,
+  terms: string[],
+  context: NonNullable<Job["assessment"]>["context"],
+  purpose: "initial" | "residual",
+  priorContext: NonNullable<Job["assessment"]>["context"] = [],
+  signal?: AbortSignal,
+) {
+  return (
+    await modelJson(
+      findingsSchema,
+      `Assess this chunk using the shared evidence from ALL files. Find client names, domains, project codenames, proprietary products and processes, internal systems, locations or combinations that identify the engagement; confidential plans, contract commitments, pricing, discounts, margins, forecasts and performance; personal details and secrets. Distinguish CSS spacing from financial margins. Preserve reusable functionality and industry knowledge. Propose neutral, meaningful generalisations, not blanket deletion and not fabricated replacement facts. Prefer readable descriptions such as "a retail bank", "the transformation programme" or "the internal platform" over bracketed placeholders like [Client Name]. Preserve the sentence grammar. Use plain-English category headings, not identifiers or snake_case. For code/HTML preserve syntax, IDs, selectors and behaviour; replace only sensitive values or visible labels, never entire code blocks to redact a word. Each original must be an EXACT non-empty substring of this chunk. Cover each applicable risk category independently, including confidential strategy even when client names are also present. Prefer the smallest meaningful non-overlapping span. Use consistent neutral descriptions for the same entities across files. Give a specific plain-English risk (reason) and plain-English proposed action (suggestion), plus confidence. No-op edits are forbidden. ${purpose === "residual" ? "This is a SECOND CHECK of the generated output; identify any remaining or newly introduced sensitivity. Do not assume human approval makes retained information safe." : "The human will approve exact replacements before execution."}`,
+      {
+        path,
+        untrustedText: text,
+        knownTerms: terms,
+        sharedEvidence: context,
+        originalEngagementEvidence: priorContext,
+      },
+      signal,
+    )
+  ).findings;
 }

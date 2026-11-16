@@ -8,3 +8,7 @@ coverage/
 .vercel
 supabase/.temp/
 .impeccable/questions/
+
+app/.well-known/workflow/
+.workflow-data/
+/.swc

@@ -1,3 +1,4 @@
+import { privateUrl } from "@/lib/asset-storage";
 import { requireUser } from "@/lib/auth";
 import { readJob, readOutput } from "@/lib/store";
 export async function GET(
@@ -12,6 +13,8 @@ export async function GET(
         { error: "Execute an approved review before downloading." },
         { status: 409 },
       );
+    if (job.outputKey)
+      return Response.redirect(await privateUrl(job.outputKey), 303);
     const bytes = await readOutput(id);
     const part = Number(new URL(request.url).searchParams.get("part") || 0),
       chunk = 1_000_000;

@@ -290,3 +290,31 @@ describe("untrusted input and access", () => {
     ).toThrow();
   });
 });
+
+it("binds explicit binary retention to approval and preserves approved binary bytes", async () => {
+  const job = await fixture();
+  const binary = await extract(
+    "generic-asset.bin",
+    new Uint8Array([0, 1, 2, 255]),
+  );
+  job.files.push(binary);
+  job.sourceHash = sourceDigest(job.files);
+  const approved = approve(job, {
+    reviewer: "reviewer",
+    sourceHash: job.sourceHash,
+    acknowledged: true,
+    brand: false,
+    retainedFiles: [binary.path],
+    decisions: job.findings.map((f) => ({
+      id: f.id,
+      decision: "accept",
+      replacement: f.replacement,
+    })),
+  });
+  const output = await buildExport(approved);
+  expect(unzipSync(output.bytes)["asset/generic-asset.bin"]).toEqual(
+    new Uint8Array([0, 1, 2, 255]),
+  );
+  approved.approval!.retainedFiles = [];
+  expect(() => verifyApproval(approved)).toThrow();
+});

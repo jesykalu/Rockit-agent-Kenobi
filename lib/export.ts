@@ -1,3 +1,4 @@
+import { validateChangedSyntax } from "./validate-output";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import PptxGenJS from "pptxgenjs";
 import { zipSync } from "fflate";
@@ -9,7 +10,7 @@ import { applyDecisions, assess, verifyApproval } from "./review";
 
 export const BRAND_DESCRIPTION =
   "HTML: add an Accenture header and purple/white typography stylesheet. PDF and PowerPoint: rebuild reviewed text in an Accenture template. Code: include an opt-in Accenture CSS file and logo, without automatically rewiring application components. Original document images, notes, metadata and layout are discarded. Unsupported binary files are excluded. Source filenames are preserved for code imports; inspect them before sharing.";
-const BRAND_CSS =
+export const BRAND_CSS =
   ":root{--kenobi-brand:#A100FF}body{font-family:Arial,sans-serif;color:#18121e;background:#fff}h1,h2,h3,a{color:#7500c0}.kenobi-brand{padding:20px 32px;border-bottom:1px solid #ddd}.kenobi-brand img{width:140px;height:auto}button,input[type=submit]{background:#7500c0;color:#fff}";
 function wrap(text: string, measure: (s: string) => number, max: number) {
   const lines: string[] = [];
@@ -111,10 +112,15 @@ export async function buildExport(job: Job) {
   for (let i = 0; i < job.files.length; i++) {
     const file = job.files[i];
     if (file.kind === "binary") {
+      if (approval.retainedFiles?.includes(file.path)) {
+        entries[`asset/${file.path}`] = Buffer.from(file.content, "base64");
+        continue;
+      }
       excludedFiles++;
       continue;
     }
     let text = applyDecisions(file, job.findings, approval.decisions);
+    validateChangedSyntax(file.path, file.text, text);
 
     const changed = text !== file.text;
     let bytes: Uint8Array,
@@ -196,4 +202,32 @@ export async function buildExport(job: Job) {
     "Kenobi reviewed output\n\nFiles under asset/ contain the approved edits. Binary files and Git history are excluded. PDFs and presentations are rebuilt from extracted text, not layout-preserving redactions. Branding files are under kenobi-brand/; application code must explicitly import them. Source paths may retain sensitive names. Reinstall dependencies and test source code before use. Revoke any exposed credentials. Rejected findings and detected residual risks are counted in review-report.json. This export is not a certification that all sensitive information has been found.\n",
   );
   return { bytes: zipSync(entries), report };
+}
+
+export async function exportFile(job: Job, file: AssetFile, index: number) {
+  const approval = job.approval!;
+  const logo = new Uint8Array(
+    await readFile(path.join(process.cwd(), "public/accenture-logo.png")),
+  );
+  let text = applyDecisions(file, job.findings, approval.decisions),
+    filename = file.path,
+    bytes: Uint8Array;
+  validateChangedSyntax(file.path, file.text, text);
+  if (file.kind === "pdf") {
+    bytes = await pdf(text, approval.brand, logo);
+    filename = `document-${index + 1}.pdf`;
+  } else if (file.kind === "pptx") {
+    bytes = await pptx(text, approval.brand, logo);
+    filename = `presentation-${index + 1}.pptx`;
+  } else {
+    if (approval.brand && /\.html?$/i.test(file.path)) {
+      const header = `<header class="kenobi-brand"><img alt="Accenture" src="data:image/png;base64,${Buffer.from(logo).toString("base64")}"></header>`;
+      text = /<body\b[^>]*>/i.test(text)
+        ? text.replace(/<body\b[^>]*>/i, (m) => m + header)
+        : header + text;
+      text += `\n<style>${BRAND_CSS}</style>`;
+    }
+    bytes = Buffer.from(text, "utf8");
+  }
+  return { filename, bytes };
 }

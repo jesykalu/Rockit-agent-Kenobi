@@ -1,4 +1,5 @@
 "use client";
+import { put as uploadBlob } from "@vercel/blob/client";
 import { useEffect, useState, useRef } from "react";
 import type { Job, Decision } from "@/lib/types";
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/upload-limits";
@@ -21,6 +22,7 @@ export default function Workspace({
     [ack, setAck] = useState(false);
   const [selected, setSelected] = useState(""),
     [mode, setMode] = useState("ai");
+  const [retainedFiles, setRetainedFiles] = useState<string[]>([]);
   const [draftState, setDraftState] = useState("Saved");
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const draftVersion = useRef(0);
@@ -38,11 +40,24 @@ export default function Workspace({
   );
   const [customText, setCustomText] = useState<Record<string, string>>({});
   const [sourceError, setSourceError] = useState("");
+  const [lastReview, setLastReview] = useState<string | null>(null);
+  useEffect(() => {
+    setLastReview(localStorage.getItem("kenobi-last-review"));
+  }, []);
+  useEffect(() => {
+    if (!job?.processing) return;
+    const timer = setInterval(
+      () => load(job.id).catch((e) => setError(e.message)),
+      4000,
+    );
+    return () => clearInterval(timer);
+  }, [job?.id, !!job?.processing]);
   async function load(id: string) {
     const res = await fetch(`/api/jobs/${id}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     setJob(data);
+    localStorage.setItem("kenobi-last-review", id);
     setSelected((s) => s || data.files[0]?.path || "");
     const saved = data.approval || data.draft;
     if (saved) {
@@ -50,6 +65,7 @@ export default function Workspace({
         Object.fromEntries(saved.decisions.map((d: Decision) => [d.id, d])),
       );
       setBrand(saved.brand);
+      setRetainedFiles(saved.retainedFiles || []);
     }
   }
   useEffect(() => {
@@ -57,7 +73,7 @@ export default function Workspace({
     if (id) load(id).catch((e) => setError(e.message));
   }, []);
   useEffect(() => {
-    if (!job || !selected) return;
+    if (!job || !selected || job.processing) return;
     const controller = new AbortController();
     const fileIndex = job.files.findIndex((f) => f.path === selected);
     setSource(null);
@@ -74,7 +90,7 @@ export default function Workspace({
         if (!controller.signal.aborted) setSourceError(error.message);
       });
     return () => controller.abort();
-  }, [job?.id, selected, sourcePage]);
+  }, [job?.id, selected, sourcePage, !!job?.processing]);
   useEffect(() => {
     if (!job || job.status !== "review") return;
     const version = ++draftVersion.current;
@@ -85,7 +101,12 @@ export default function Workspace({
         .then(async () => {
           await post(
             `/api/jobs/${job.id}`,
-            { type: "draft", brand, decisions: Object.values(decisions) },
+            {
+              type: "draft",
+              brand,
+              retainedFiles,
+              decisions: Object.values(decisions),
+            },
             "PATCH",
           );
           if (version === draftVersion.current) setDraftState("Draft saved");
@@ -98,7 +119,7 @@ export default function Workspace({
         });
     }, 500);
     return () => clearTimeout(timer);
-  }, [decisions, brand, job?.id, job?.status]);
+  }, [decisions, brand, retainedFiles, job?.id, job?.status]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (job?.status === "review" && draftState !== "Draft saved") {
@@ -195,6 +216,11 @@ export default function Workspace({
                 an Accenture-branded copy when you’re ready.
               </p>
             </div>
+            {lastReview && (
+              <p>
+                <a href={`?review=${lastReview}`}>Return to your last review</a>
+              </p>
+            )}
             <div className="intake-grid">
               <form
                 className="intake"
@@ -211,58 +237,40 @@ export default function Workspace({
                       throw new Error(
                         "Choose uploaded files or a repository, not both.",
                       );
-                    if (
-                      files.reduce((sum, file) => sum + file.size, 0) >
-                      MAX_UPLOAD_BYTES
-                    )
-                      throw new Error(
-                        "Upload limit is 25 MB in total. Choose a smaller file set.",
-                      );
                     if (files.length) {
-                      const upload = await post("/api/uploads", {
-                        files: files.map((file) => ({
-                          name: file.name,
-                          size: file.size,
+                      const total = files.reduce((n, f) => n + f.size, 0);
+                      if (total > 2_000_000_000)
+                        throw new Error("Package limit is 2 GB.");
+                      const prepared = await post("/api/assets", {
+                        files: files.map((f) => ({
+                          name: f.name,
+                          size: f.size,
                         })),
+                        mode,
+                        terms: String(form.get("terms") || "")
+                          .split(/[,\n]/)
+                          .map((t) => t.trim())
+                          .filter(Boolean),
                       });
-                      const blob = new Blob(files);
-                      try {
-                        for (
-                          let offset = 0, part = 0;
-                          offset < blob.size;
-                          offset += UPLOAD_CHUNK_BYTES, part++
-                        ) {
-                          setBusy(
-                            `Uploading your files: ${Math.round((offset / blob.size) * 100)}%.`,
-                          );
-                          const response = await fetch(
-                            `/api/uploads/${upload.id}?part=${part}`,
-                            {
-                              method: "PUT",
-                              headers: {
-                                "Content-Type": "application/octet-stream",
-                              },
-                              body: blob.slice(
-                                offset,
-                                offset + UPLOAD_CHUNK_BYTES,
-                              ),
-                            },
-                          );
-                          if (!response.ok) {
-                            const result = await response.json();
-                            throw new Error(
-                              result.error || "Upload failed. Please retry.",
-                            );
-                          }
-                        }
-                        form.delete("files");
-                        form.set("upload_id", upload.id);
-                      } catch (error) {
-                        await fetch(`/api/uploads/${upload.id}`, {
-                          method: "DELETE",
-                        }).catch(() => {});
-                        throw error;
+                      history.replaceState(null, "", `?review=${prepared.id}`);
+                      localStorage.setItem("kenobi-last-review", prepared.id);
+                      for (const [i, file] of files.entries()) {
+                        await uploadBlob(prepared.uploads[i].key, file, {
+                          access: "private",
+                          token: prepared.uploads[i].token,
+                          multipart: true,
+                          onUploadProgress: ({ percentage }) =>
+                            setBusy(
+                              `Uploading file ${i + 1} of ${files.length}: ${Math.round(percentage)}%.`,
+                            ),
+                        });
                       }
+                      setBusy(
+                        "Upload complete. Queuing background assessment.",
+                      );
+                      await post(`/api/jobs/${prepared.id}/start`);
+                      await load(prepared.id);
+                      return;
                     }
                     setBusy("Upload complete. Assessing your asset.");
                     const data = await post("/api/jobs", form);
@@ -281,9 +289,10 @@ export default function Workspace({
                   aria-describedby="file-help"
                 />
                 <p className="hint" id="file-help">
-                  HTML, code, text-based PDF, PPTX or ZIP. Up to 25 MB total /
-                  1,500 files. GitHub imports: up to 25 MB. Legacy .ppt files
-                  need conversion to .pptx.
+                  HTML, code, text-based PDF, PPTX or ZIP. Packages up to 2 GB;
+                  individual files up to 25 MB are assessed. Larger files and
+                  dependency folders are listed as excluded. GitHub imports:
+                  up to 25 MB. Legacy .ppt files need conversion to .pptx.
                 </p>
                 <div className="separator">or connect a repository</div>
                 <label htmlFor="repo">GitHub repository URL</label>
@@ -372,6 +381,88 @@ export default function Workspace({
               </aside>
             </div>
           </>
+        ) : job.processing || job.status === "uploading" ? (
+          <section className="approval">
+            <h1>
+              {job.processing?.error
+                ? "Assessment paused"
+                : job.status === "uploading"
+                  ? "Upload not yet complete"
+                  : "Processing in the background"}
+            </h1>
+            {job.processing ? (
+              <>
+                <p>
+                  {
+                    {
+                      index: "Indexing source files",
+                      discover: "Identifying client context",
+                      assess: "Reviewing sensitive information",
+                      export: "Applying approved changes",
+                      "verify-discover": "Checking exported client context",
+                      "verify-assess": "Reviewing remaining risks",
+                      package: "Packaging your download",
+                    }[job.processing.phase]
+                  }
+                </p>
+                <progress
+                  max={Math.max(1, job.processing.total)}
+                  value={job.processing.cursor}
+                  aria-label="Current stage progress"
+                />
+                <p role="status">
+                  {job.processing.cursor} of {job.processing.total || "…"}{" "}
+                  sections completed in this stage.
+                </p>
+                <p>
+                  You can close this page. Processing continues on the server,
+                  and completed steps are saved. Bookmark this page to return.
+                </p>
+                {job.processing.error && (
+                  <p role="alert">{job.processing.error}</p>
+                )}
+                {(job.processing.error ||
+                  Date.now() - Date.parse(job.processing.updatedAt) >
+                    180000) && (
+                  <button
+                    disabled={!!busy}
+                    onClick={() =>
+                      action("Resuming saved assessment.", async () => {
+                        await post(`/api/jobs/${job.id}/retry`);
+                        await load(job.id);
+                      })
+                    }
+                  >
+                    Retry from saved progress
+                  </button>
+                )}
+              </>
+            ) : (
+              <p>
+                The upload was interrupted before assessment started. Start a
+                new review and select the source again.
+              </p>
+            )}
+            <a href="/">Start another review</a>
+            <details className="delete">
+              <summary>Delete this review and its uploaded files</summary>
+              <p>
+                This permanently removes the uploaded source and saved
+                assessment.
+              </p>
+              <button
+                disabled={!!busy}
+                onClick={() =>
+                  action("Deleting review.", async () => {
+                    await post(`/api/jobs/${job.id}`, undefined, "DELETE");
+                    location.href = "/";
+                  })
+                }
+              >
+                Delete review permanently
+              </button>
+            </details>
+          </section>
         ) : (
           <>
             <div className="review-title">
@@ -415,6 +506,10 @@ export default function Workspace({
                   disabled={!!busy}
                   onClick={() =>
                     action("Downloading reviewed files.", async () => {
+                      if (job.outputKey) {
+                        location.href = `/api/jobs/${job.id}/download`;
+                        return;
+                      }
                       const parts: BlobPart[] = [];
                       let total = 1;
                       for (let part = 0; part < total; part++) {
@@ -527,6 +622,15 @@ export default function Workspace({
                 ))}
               </details>
             )}
+            {Boolean(job.excludedCount) && (
+              <p>
+                {job.excludedCount} files were excluded before assessment.{" "}
+                <a href={`/api/jobs/${job.id}/exclusions`}>
+                  Download private exclusion list
+                </a>
+                . These files are not in the exported copy.
+              </p>
+            )}
             <div className="review-grid">
               <aside className="file-list">
                 <h2>Source files</h2>
@@ -542,7 +646,9 @@ export default function Workspace({
                     <span>{f.path}</span>
                     <small>
                       {f.kind === "binary"
-                        ? "Excluded"
+                        ? retainedFiles.includes(f.path)
+                          ? "Retained after manual review"
+                          : "Not assessed / excluded"
                         : `${job.findings.filter((x) => x.path === f.path).length} findings`}
                     </small>
                   </button>
@@ -550,6 +656,33 @@ export default function Workspace({
               </aside>
               <section className="findings">
                 <h2>{selected}</h2>
+                {selectedFile?.kind === "binary" && (
+                  <div className="coverage">
+                    <p>
+                      This file has not been assessed by AI. It is excluded
+                      unless you have separately checked its content, metadata
+                      and licence.
+                    </p>
+                    <label>
+                      <input
+                        type="checkbox"
+                        disabled={!editable || !!busy}
+                        checked={retainedFiles.includes(selected)}
+                        onChange={(e) => {
+                          setRetainedFiles((files) =>
+                            e.target.checked
+                              ? [...files, selected]
+                              : files.filter((f) => f !== selected),
+                          );
+                          setAck(false);
+                        }}
+                      />{" "}
+                      I have manually reviewed this file and want to include it
+                      unchanged.
+                    </label>
+                  </div>
+                )}
+
                 <details className="source">
                   <summary>Inspect extracted source text</summary>
                   {sourceError && (
@@ -840,8 +973,9 @@ export default function Workspace({
                 PowerPoint use a new text template. Code exports include opt-in
                 CSS and logo assets; review AI-proposed component changes
                 individually. Original logos in images cannot be assessed;
-                binary files are excluded. Code filenames are preserved and may
-                need manual renaming.
+                binary files are excluded unless you explicitly retain them
+                after manual review. Code filenames are preserved and may need
+                manual renaming.
               </p>
               {editable ? (
                 <>
@@ -872,6 +1006,7 @@ export default function Workspace({
                           sourceHash: job.sourceHash,
                           decisions: Object.values(decisions),
                           brand,
+                          retainedFiles,
                           acknowledged: true,
                         });
                         await load(job.id);

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireUser, sameOrigin } from "@/lib/auth";
 import { readJob, saveJob, locked, writeOutput } from "@/lib/store";
-import { buildExport } from "@/lib/export";
+import { verifyApproval } from "@/lib/review";
+import { processing } from "@/lib/durable-review";
+import { startReview } from "@/lib/start-review";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(
@@ -12,13 +14,20 @@ export async function POST(
     const owner = requireUser(request);
     sameOrigin(request);
     const { id } = await params;
+    let queued = false;
     await locked(id, async () => {
       const job = await readJob(id, owner);
       if (job.status === "complete") return;
-      const { bytes, report } = await buildExport(job);
-      await writeOutput(id, bytes);
-      await saveJob({ ...job, status: "complete", report });
+      verifyApproval(job);
+      if (job.processing) return;
+      job.processing = {
+        ...processing("export", job.files.length),
+        outputs: [],
+      };
+      await saveJob(job);
+      queued = true;
     });
+    if (queued) await startReview(id, owner);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

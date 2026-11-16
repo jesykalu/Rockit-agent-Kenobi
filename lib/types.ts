@@ -4,6 +4,11 @@ export interface AssetFile {
   kind: "text" | "pdf" | "pptx" | "binary";
   text: string;
   warnings: string[];
+  storageKey?: string;
+  textLength?: number;
+  textHash?: string;
+  chunkOffsets?: number[];
+  exportKey?: string;
 }
 export interface Finding {
   id: string;
@@ -30,12 +35,45 @@ export interface Job {
   createdAt: string;
   source: string;
   sourceHash: string;
-  status: "review" | "approved" | "complete";
+  status: "uploading" | "processing" | "review" | "approved" | "complete";
   mode: "local" | "ai";
   clientTerms: string[];
   files: AssetFile[];
   findings: Finding[];
   warnings: string[];
+  processing?: {
+    phase:
+      | "index"
+      | "discover"
+      | "assess"
+      | "export"
+      | "verify-discover"
+      | "verify-assess"
+      | "package";
+    cursor: number;
+    total: number;
+    error?: string;
+    findings?: Finding[];
+    updatedAt: string;
+    runId?: string;
+    generation: string;
+    context: NonNullable<Job["assessment"]>["context"];
+    chunks: { file: number; offset: number }[];
+    outputs?: AssetFile[];
+  };
+  inputs?: { path: string; key: string; size: number }[];
+  outputKey?: string;
+  excludedCount?: number;
+  inventory?: {
+    path: string;
+    input: number;
+    offset?: number;
+    compressed?: number;
+    size: number;
+    method?: number;
+    crc?: number;
+    excluded?: string;
+  }[];
   assessment?: {
     version: string;
     provider: string;
@@ -49,7 +87,7 @@ export interface Job {
     }[];
     purpose: string;
   };
-  draft?: { decisions: Decision[]; brand: boolean };
+  draft?: { decisions: Decision[]; brand: boolean; retainedFiles?: string[] };
   approval?: {
     reviewer: string;
     at: string;
@@ -57,6 +95,7 @@ export interface Job {
     decisions: Decision[];
     brand: boolean;
     acknowledged: true;
+    retainedFiles?: string[];
   };
   report?: {
     contextualCheck?: boolean;

@@ -1,3 +1,4 @@
+import { loadAsset, removeAssets } from "@/lib/asset-storage";
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -9,9 +10,19 @@ export async function GET(request: Request, { params }: Context) {
     const job = await readJob((await params).id, requireUser(request));
     return NextResponse.json({
       ...job,
+      inventory: undefined,
+      processing: job.processing
+        ? {
+            ...job.processing,
+            chunks: [],
+            context: [],
+            findings: [],
+            outputs: undefined,
+          }
+        : undefined,
       files: job.files.map(({ content, text, ...rest }) => ({
         ...rest,
-        textLength: text.length,
+        textLength: rest.textLength ?? text.length,
       })),
     });
   } catch {
@@ -32,6 +43,7 @@ export async function PATCH(request: Request, { params }: Context) {
         const draft = z
           .object({
             brand: z.boolean(),
+            retainedFiles: z.array(z.string()).max(1500).default([]),
             decisions: z
               .array(
                 z.object({
@@ -49,11 +61,19 @@ export async function PATCH(request: Request, { params }: Context) {
           draft.decisions.some((d) => !job.findings.some((f) => f.id === d.id))
         )
           throw new Error("Invalid draft decisions.");
+        if (
+          draft.retainedFiles.some(
+            (path) =>
+              !job.files.some((f) => f.path === path && f.kind === "binary"),
+          )
+        )
+          throw new Error("Invalid retained file selection.");
         job.draft = draft;
         await saveJob(job);
         return;
       }
-      const file = job.files.find((f) => f.path === input.path);
+      const meta = job.files.find((f) => f.path === input.path);
+      const file = meta ? await loadAsset(meta) : undefined;
       if (
         !file ||
         typeof input.original !== "string" ||
@@ -109,6 +129,7 @@ export async function DELETE(request: Request, { params }: Context) {
     const { id } = await params;
     await locked(id, async () => {
       await readJob(id, owner);
+      await removeAssets(id);
       await deleteJob(id);
     });
     return NextResponse.json({ ok: true });
