@@ -3,10 +3,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { advanceReview, processing } from "../lib/durable-review";
+import {
+  advanceReview as advanceBatch,
+  processing,
+} from "../lib/durable-review";
 import { saveJob, readJob } from "../lib/store";
 import { sourceDigest, approve } from "../lib/review";
 import type { Job } from "../lib/types";
+const advanceReview = (...args: Parameters<typeof advanceBatch>) =>
+  advanceBatch(...(args.slice(0, 4) as [string, string, string, string]), 1);
 const mocks = vi.hoisted(() => ({ discover: vi.fn(), review: vi.fn() }));
 vi.mock("../lib/contextual-review", () => ({
   discoverChunk: mocks.discover,
@@ -98,6 +103,65 @@ it("checkpoints each chunk, does not duplicate replayed steps and resumes a fail
     expect(
       await advanceReview(job.id, job.owner, "stale-generation", "assess:0"),
     ).toMatchObject({ done: true });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+it("runs four sections concurrently, merges in source order and preserves replay safety", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "kenobi-parallel-"));
+  vi.stubEnv("KENOBI_DATA_DIR", dir);
+  vi.stubEnv("DATABASE_URL", "");
+  try {
+    const file = {
+      path: "sample.txt",
+      content: "",
+      kind: "text" as const,
+      text: "x".repeat(100000),
+      warnings: [],
+    };
+    const job: Job = {
+      id: randomUUID(),
+      owner: "owner",
+      createdAt: "now",
+      source: "test",
+      sourceHash: sourceDigest([file]),
+      status: "processing",
+      mode: "ai",
+      clientTerms: [],
+      files: [file],
+      findings: [],
+      warnings: [],
+      processing: processing("discover", 4),
+    };
+    job.processing!.chunks = [0, 24000, 48000, 72000].map((offset) => ({
+      file: 0,
+      offset,
+    }));
+    await saveJob(job);
+    let active = 0,
+      peak = 0;
+    mocks.discover.mockImplementation(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active--;
+      return [];
+    });
+    await advanceBatch(
+      job.id,
+      job.owner,
+      job.processing!.generation,
+      "discover:0",
+    );
+    expect(peak).toBe(4);
+    expect((await readJob(job.id, job.owner)).processing?.cursor).toBe(4);
+    await advanceBatch(
+      job.id,
+      job.owner,
+      job.processing!.generation,
+      "discover:0",
+    );
+    expect(mocks.discover).toHaveBeenCalledTimes(4);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -61,6 +61,7 @@ export async function advanceReview(
   owner: string,
   generation: string,
   expected: string,
+  concurrency = 4,
 ) {
   return locked(id, async () => {
     const job = await readJob(id, owner),
@@ -234,31 +235,29 @@ export async function advanceReview(
       const residual = p.phase.startsWith("verify-"),
         discovery = p.phase.endsWith("discover");
       if (p.cursor < p.chunks.length) {
-        const section = p.chunks[p.cursor],
-          file = await loadAsset(
-            (residual ? p.outputs! : job.files)[section.file],
-          );
-        const text = reviewText(file.text).slice(
-          section.offset,
-          section.offset + 26000,
+        const sections = p.chunks.slice(
+          p.cursor,
+          p.cursor + Math.max(1, Math.min(4, concurrency)),
         );
-        if (text.trim()) {
-          if (discovery && job.mode === "ai") {
-            const entities = await discoverChunk(
-              file.path,
-              text,
-              job.clientTerms,
-            );
-            for (const e of entities)
-              if (!p.context.some((c) => c.original === e.original))
-                p.context.push(e);
-            if (JSON.stringify(p.context).length > 100000)
-              throw new Error(
-                "Too much distinct client context for one assessment. Narrow the source scope. Completed progress is retained.",
+        const loaded = new Map<number, ReturnType<typeof loadAsset>>();
+        const results = await Promise.all(
+          sections.map(async (section) => {
+            if (!loaded.has(section.file))
+              loaded.set(
+                section.file,
+                loadAsset((residual ? p.outputs! : job.files)[section.file]),
               );
-          } else if (!discovery) {
+            const file = await loaded.get(section.file)!;
+            const text = reviewText(file.text).slice(
+              section.offset,
+              section.offset + 26000,
+            );
+            const entities =
+              text.trim() && discovery && job.mode === "ai"
+                ? await discoverChunk(file.path, text, job.clientTerms)
+                : [];
             const items: Partial<Finding>[] =
-              job.mode === "ai"
+              text.trim() && !discovery && job.mode === "ai"
                 ? await reviewChunk(
                     file.path,
                     text,
@@ -268,48 +267,63 @@ export async function advanceReview(
                     job.assessment?.context,
                   )
                 : [];
-            items.push(...scanFile({ ...file, text }, job.clientTerms));
-            for (const item of items) {
-              if (
-                !item.original ||
-                item.original === item.replacement ||
-                !text.includes(item.original) ||
-                item.replacement!.length > 10000
-              ) {
-                job.warnings.push(
-                  `${file.path}: a suggestion did not match the source and needs manual inspection.`,
+            return { section, file, text, entities, items };
+          }),
+        );
+        for (const { section, file, text, entities, items } of results) {
+          if (text.trim()) {
+            if (discovery && job.mode === "ai") {
+              for (const e of entities)
+                if (!p.context.some((c) => c.original === e.original))
+                  p.context.push(e);
+              if (JSON.stringify(p.context).length > 100000)
+                throw new Error(
+                  "Too much distinct client context for one assessment. Narrow the source scope. Completed progress is retained.",
                 );
-                continue;
-              }
-              let at = text.indexOf(item.original);
-              while (at >= 0) {
-                const start = section.offset + at,
-                  end = start + item.original.length;
+            } else if (!discovery) {
+              items.push(...scanFile({ ...file, text }, job.clientTerms));
+              for (const item of items) {
                 if (
-                  !p.findings!.some(
-                    (f) =>
-                      f.path === file.path && start < f.end && end > f.start,
+                  !item.original ||
+                  item.original === item.replacement ||
+                  !text.includes(item.original) ||
+                  item.replacement!.length > 10000
+                ) {
+                  job.warnings.push(
+                    `${file.path}: a suggestion did not match the source and needs manual inspection.`,
+                  );
+                  continue;
+                }
+                let at = text.indexOf(item.original);
+                while (at >= 0) {
+                  const start = section.offset + at,
+                    end = start + item.original.length;
+                  if (
+                    !p.findings!.some(
+                      (f) =>
+                        f.path === file.path && start < f.end && end > f.start,
+                    )
                   )
-                )
-                  p.findings!.push({
-                    ...item,
-                    id: randomUUID(),
-                    path: file.path,
-                    start,
-                    end,
-                    line: file.text.slice(0, start).split("\n").length,
-                    source: item.source || "ai",
-                  } as Finding);
-                at = text.indexOf(item.original, at + item.original.length);
+                    p.findings!.push({
+                      ...item,
+                      id: randomUUID(),
+                      path: file.path,
+                      start,
+                      end,
+                      line: file.text.slice(0, start).split("\n").length,
+                      source: item.source || "ai",
+                    } as Finding);
+                  at = text.indexOf(item.original, at + item.original.length);
+                }
               }
+              if (p.findings!.length > 2000)
+                throw new Error(
+                  "This assessment exceeds 2,000 findings. Narrow the source scope. Completed progress is retained.",
+                );
             }
-            if (p.findings!.length > 2000)
-              throw new Error(
-                "This assessment exceeds 2,000 findings. Narrow the source scope. Completed progress is retained.",
-              );
           }
+          p.cursor++;
         }
-        p.cursor++;
       } else if (discovery) {
         p.cursor = 0;
         p.phase = residual ? "verify-assess" : "assess";
