@@ -14,6 +14,13 @@ export function assessmentProgress(
   return {
     max: Math.max(1, p.total * (twoPasses ? 2 : 1)),
     value: p.cursor + (twoPasses && second ? p.total : 0),
-    label: twoPasses ? `Pass ${second ? 2 : 1} of 2` : "Current stage",
+    label:
+      p.engine === "fast-v2" && twoPasses
+        ? second
+          ? "Checking shared context"
+          : "Reviewing content and client context"
+        : twoPasses
+          ? `Pass ${second ? 2 : 1} of 2`
+          : "Current stage",
   };
 }

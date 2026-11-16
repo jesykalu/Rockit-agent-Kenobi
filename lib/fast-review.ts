@@ -7,8 +7,8 @@ import {
   reviewText,
 } from "./contextual-review";
 import type { Job } from "./types";
-export const FAST_VERSION = "fast-v2.1";
-export const RANGE_SIZE = 120000;
+export const FAST_VERSION = "fast-v2.2";
+export const RANGE_SIZE = 600000;
 export type Range = { offset: number; length: number };
 export function planRanges(source: string): Range[] {
   const text = reviewText(source),
@@ -16,6 +16,12 @@ export function planRanges(source: string): Range[] {
   if (!text.trim()) return ranges;
   for (let offset = 0; offset < text.length;) {
     let end = Math.min(offset + RANGE_SIZE, text.length);
+    while (
+      Buffer.byteLength(JSON.stringify(text.slice(offset, end)), "utf8") >
+      RANGE_SIZE
+    )
+      end = offset + Math.floor((end - offset) * 0.9);
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
     if (end < text.length) {
       const newline = text.lastIndexOf("\n", end - 1);
       if (newline >= end - 6000 && newline > offset + 2000) end = newline + 1;
@@ -63,20 +69,20 @@ export function validateAnalysis(
   const result = analysisSchema.parse(input);
   for (const e of result.entities)
     if (
-      !e.original ||
+      !e.original.trim() ||
       (!text.includes(e.original) && !path.includes(e.original))
     )
       throw new Error("Unsupported context evidence; review incomplete.");
   for (const f of result.findings)
     if (
-      !f.original ||
+      !f.original.trim() ||
       !text.includes(f.original) ||
       f.original === f.replacement ||
       f.replacement.length > 10000
     )
       throw new Error("Unsupported finding evidence; review incomplete.");
   for (const quote of result.uncertain)
-    if (!quote || !text.includes(quote))
+    if (!quote.trim() || !text.includes(quote))
       throw new Error("Unsupported uncertain evidence; review incomplete.");
   return result;
 }

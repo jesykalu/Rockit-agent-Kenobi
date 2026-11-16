@@ -7,6 +7,7 @@ import {
   issueSignedToken,
   presignUrl,
 } from "@vercel/blob";
+import { planRanges } from "./fast-review";
 import { reviewText } from "./contextual-review";
 import { createHash } from "node:crypto";
 import type { AssetFile } from "./types";
@@ -30,6 +31,7 @@ export async function saveAsset(
   return {
     ...file,
     chunkOffsets,
+    reviewRanges: planRanges(file.text),
     content: "",
     text: "",
     storageKey: key,

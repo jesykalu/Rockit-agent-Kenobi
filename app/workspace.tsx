@@ -397,9 +397,13 @@ export default function Workspace({
                     {
                       index: "Indexing source files",
                       discover:
-                        "Identifying client context — next, we use it to propose changes",
+                        job.processing.engine === "fast-v2"
+                          ? "Reviewing content and identifying client context"
+                          : "Identifying client context — next, we use it to propose changes",
                       assess:
-                        "Finding sensitive information and proposing changes — your review is next",
+                        job.processing.engine === "fast-v2"
+                          ? "Checking all sections against shared client context — your review is next"
+                          : "Finding sensitive information and proposing changes — your review is next",
                       export: "Applying approved changes",
                       "verify-discover": "Checking exported client context",
                       "verify-assess": "Reviewing remaining risks",

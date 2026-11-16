@@ -6,13 +6,13 @@ import {
   analysisKey,
 } from "../lib/fast-review";
 it("covers every character in minified and Unicode text with bounded overlapping ranges", () => {
-  const text = "const demo='銀行';".repeat(30000);
+  const text = "const demo='銀行';".repeat(90000);
   const ranges = planRanges(text);
   expect(ranges.length).toBeGreaterThan(1);
   let end = 0;
   for (const r of ranges) {
     expect(r.offset).toBeLessThanOrEqual(end);
-    expect(r.length).toBeLessThanOrEqual(120000);
+    expect(r.length).toBeLessThanOrEqual(600000);
     expect(r.offset + r.length).toBeGreaterThan(end);
     end = r.offset + r.length;
   }
@@ -68,4 +68,22 @@ it("keys include path, context, terms, model and source", () => {
     { priorContext: [{ original: "Acme" }] },
   ])
     expect(analysisKey({ ...input, ...change })).not.toBe(key);
+});
+
+it("packs a large ASCII asset without arbitrary small slices", () => {
+  expect(planRanges("x".repeat(539000))).toHaveLength(1);
+  const text = "銀行".repeat(250000);
+  for (const r of planRanges(text))
+    expect(
+      Buffer.byteLength(text.slice(r.offset, r.offset + r.length)),
+    ).toBeLessThanOrEqual(600000);
+});
+it("bounds JSON-escaped input as well as UTF-8 text", () => {
+  const text = "\u0001".repeat(150000);
+  for (const r of planRanges(text))
+    expect(
+      Buffer.byteLength(
+        JSON.stringify(text.slice(r.offset, r.offset + r.length)),
+      ),
+    ).toBeLessThanOrEqual(600000);
 });

@@ -8,7 +8,7 @@
 **Spec:** docs/superpowers/specs/2026-11-16-fast-review-design.md
 
 ## Global Constraints
-- Max range 120,000 characters, overlap 2,000; newline boundary search 6,000.
+- Max range 600,000 characters and 600,000 UTF-8 bytes, overlap 2,000; newline boundary search 6,000.
 - Same model; no content sampling; exact-source evidence; explicit human approval.
 - Engine selected by KENOBI_REVIEW_ENGINE=fast-v2 and pinned per job.
 - Do not alter running legacy jobs. No production default without quality gate.

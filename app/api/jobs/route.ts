@@ -8,7 +8,7 @@ import type { Job } from "@/lib/types";
 import { consumeUpload } from "@/lib/uploads";
 import { MAX_REVIEW_TEXT_BYTES } from "@/lib/upload-limits";
 import { saveAsset } from "@/lib/asset-storage";
-import { processing } from "@/lib/durable-review";
+import { processing, prepareChunks } from "@/lib/durable-review";
 import { startReview } from "@/lib/start-review";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -87,15 +87,8 @@ export async function POST(request: Request) {
       warnings,
       processing: processing("discover"),
     };
-    job.processing!.chunks = files.flatMap((f, file) =>
-      f.kind === "binary"
-        ? []
-        : Array.from({ length: Math.ceil(f.text.length / 24000) }, (_, i) => ({
-            file,
-            offset: i * 24000,
-          })),
-    );
-    job.processing!.total = job.processing!.chunks.length;
+    await prepareChunks(job);
+    if (!useAI) job.processing!.phase = "assess";
     await saveJob(job);
     await startReview(id, owner);
     return NextResponse.json({ id: job.id });
