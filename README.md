@@ -71,4 +71,4 @@ npm run typecheck
 npm run build
 ```
 
-Tests cover approval bypass, stale/tampered snapshots, rejected/overlapping changes, binary exclusion, safe archive paths, authentication/origin checks, and PDF/PPTX export-and-reimport. Live Azure and hosted database checks require deployment credentials.
+Tests cover approval bypass, stale/tampered snapshots, rejected/overlapping changes, binary exclusion, safe archive paths, authentication/origin checks, and PDF/PPTX export-and-reimport. The optional KENOBI_TEST_DATABASE_URL test verifies a complete approval/export round trip against Postgres, including JSONB encoding and canonical approval hashes. Live Azure checks require model credentials.

@@ -15,7 +15,14 @@ import type { Job } from "../lib/types";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { saveJob, readJob, locked, deleteJob } from "../lib/store";
+import {
+  saveJob,
+  readJob,
+  locked,
+  deleteJob,
+  writeOutput,
+  readOutput,
+} from "../lib/store";
 
 async function fixture(): Promise<Job> {
   const file = await extract(
@@ -52,6 +59,34 @@ function approveAll(job: Job) {
   });
 }
 afterEach(() => vi.unstubAllEnvs());
+it.skipIf(!process.env.KENOBI_TEST_DATABASE_URL)(
+  "round-trips a complete approved review through Postgres",
+  async () => {
+    vi.stubEnv("DATABASE_URL", process.env.KENOBI_TEST_DATABASE_URL!);
+    const job = await fixture();
+    try {
+      await saveJob(job);
+      const stored = await readJob(job.id, job.owner);
+      expect(stored.files[0].text).toBe(job.files[0].text);
+      await expect(readJob(job.id, "other-owner")).rejects.toThrow("not found");
+      await locked(job.id, async () => {
+        await saveJob(approveAll(stored));
+      });
+      const approved = await readJob(job.id, job.owner);
+      verifyApproval(approved);
+      const { bytes, report } = await buildExport(approved);
+      await locked(job.id, async () => {
+        await writeOutput(job.id, bytes);
+        await saveJob({ ...approved, status: "complete", report });
+      });
+      expect((await readJob(job.id, job.owner)).status).toBe("complete");
+      expect(new Uint8Array(await readOutput(job.id))).toEqual(bytes);
+    } finally {
+      await deleteJob(job.id);
+    }
+  },
+  30000,
+);
 describe("approval boundary", () => {
   it("blocks execution without human approval", async () => {
     await expect(buildExport(await fixture())).rejects.toThrow(

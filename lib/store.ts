@@ -28,7 +28,7 @@ function jobPath(id: string) {
 export async function saveJob(job: Job) {
   const sql = database();
   if (sql) {
-    await sql`insert into kenobi_private.reviews (id, owner, document) values (${job.id},${job.owner},${JSON.stringify(job)}::jsonb) on conflict(id) do update set document=excluded.document`;
+    await sql`insert into kenobi_private.reviews (id, owner, document) values (${job.id},${job.owner},${sql.json(job as unknown as postgres.JSONValue)}::jsonb) on conflict(id) do update set document=excluded.document`;
     return;
   }
   await mkdir(root(), { recursive: true, mode: 0o700 });

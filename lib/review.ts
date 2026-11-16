@@ -4,7 +4,20 @@ import { renderCleansingSkills } from "./cleansing-template";
 import type { AssetFile, Finding, Job, Decision } from "./types";
 
 export const digest = (value: unknown) =>
-  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  createHash("sha256")
+    .update(
+      JSON.stringify(value, (_key, item) => {
+        // JSONB preserves values but not object-key insertion order.
+        if (item && typeof item === "object" && !Array.isArray(item))
+          return Object.fromEntries(
+            Object.keys(item)
+              .sort()
+              .map((key) => [key, item[key]]),
+          );
+        return item;
+      }),
+    )
+    .digest("hex");
 export const sourceDigest = (files: AssetFile[]) =>
   digest(
     files.map((f) => ({
