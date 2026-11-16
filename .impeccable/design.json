@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-16T11:07:20.343998+00:00",
+  "title": "Design System: Kenobi",
+  "extensions": {
+    "colorMeta": {
+      "action": {
+        "role": "primary",
+        "displayName": "Accenture action purple"
+      },
+      "accent-text": {
+        "role": "primary",
+        "displayName": "Pale purple"
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Purple-black ground"
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Deep purple surface"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Pale ink"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Inherited display geometry",
+        "purpose": "Intake headings. Family remains an inherited fallback, not a new brand decision."
+      },
+      "body": {
+        "displayName": "System fallback",
+        "purpose": "Readable review prose without a bundled licensed brand font."
+      },
+      "evidence": {
+        "displayName": "Literal evidence",
+        "purpose": "Exact source text and replacements."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "control-background",
+        "value": "background 0.18s ease-out",
+        "purpose": "Button state feedback; disabled under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "900px"
+      },
+      {
+        "name": "mobile",
+        "value": "650px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Commits the current explicit workflow action.",
+      "html": "<button class=\"ds-primary\">Approve change set</button>",
+      "css": ".ds-primary{background:#8900da;color:#fff;border:1px solid var(--purple,#c77dff);border-radius:6px;padding:13px 20px;font:600 16px Arial,sans-serif;cursor:pointer;transition:background .18s ease-out}.ds-primary:hover{background:var(--action,#a100ff)}.ds-primary:focus-visible{outline:3px solid var(--purple,#c77dff);outline-offset:4px}.ds-primary:disabled{opacity:.5;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}"
+    },
+    {
+      "name": "Secondary decision button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "An explicit per-finding choice with a pressed state.",
+      "html": "<button class=\"ds-secondary\" aria-pressed=\"true\">Accept change</button>",
+      "css": ".ds-secondary{background:var(--panel,#1c1529);color:var(--ink,#f6f0fb);border:1px solid var(--line,#44364f);padding:7px 12px;border-radius:6px;font:12px Arial,sans-serif;cursor:pointer}.ds-secondary:hover{background:#352445}.ds-secondary[aria-pressed=true]{background:#60327d;border-color:var(--purple,#c77dff)}.ds-secondary:focus-visible{outline:3px solid var(--purple,#c77dff);outline-offset:4px}"
+    },
+    {
+      "name": "Text field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "Labelled entry for asset or reviewer context.",
+      "html": "<label class=\"ds-label\" for=\"ds-terms\">Sensitive terms</label><input class=\"ds-field\" id=\"ds-terms\" placeholder=\"Client or project name\">",
+      "css": ".ds-label{display:block;color:var(--ink,#f6f0fb);font:600 14px Arial,sans-serif;margin-bottom:8px}.ds-field{width:100%;background:#0d0a13;color:var(--ink,#f6f0fb);border:1px solid #685574;border-radius:6px;padding:12px;font:16px Arial,sans-serif;caret-color:var(--purple,#c77dff)}.ds-field::placeholder{color:#a99ab6}.ds-field:focus-visible{outline:3px solid var(--purple,#c77dff);outline-offset:4px}"
+    },
+    {
+      "name": "Coverage disclosure",
+      "kind": "card",
+      "refersTo": "coverage-disclosure",
+      "description": "Prominent scope and limitation notes.",
+      "html": "<details class=\"ds-coverage\"><summary>Coverage &amp; limitations</summary><p>Text inside images needs a separate review.</p></details>",
+      "css": ".ds-coverage{background:#201629;color:#e0cde9;border:1px solid #574164;border-radius:8px;padding:20px 24px;font:14px/1.55 Arial,sans-serif}.ds-coverage summary{font-weight:600;cursor:pointer}.ds-coverage summary:focus-visible{outline:3px solid var(--purple,#c77dff);outline-offset:4px}.ds-coverage p{margin-bottom:0}"
+    },
+    {
+      "name": "Review progress",
+      "kind": "nav",
+      "description": "Numbered steps show the current workflow stage.",
+      "html": "<nav class=\"ds-steps\" aria-label=\"Review progress\"><span><b>1</b>Add an asset</span><span aria-current=\"step\"><b>2</b>Review changes</span><span><b>3</b>Approve &amp; export</span></nav>",
+      "css": ".ds-steps{display:flex;gap:36px;color:var(--muted,#c4b6cf);font:13px Arial,sans-serif}.ds-steps span{display:flex;gap:10px;align-items:center}.ds-steps b{font-weight:400;width:26px;height:26px;display:grid;place-items:center;border:1px solid var(--line,#44364f);border-radius:50%}.ds-steps [aria-current]{color:var(--ink,#f6f0fb)}.ds-steps [aria-current] b{background:var(--action,#a100ff);border-color:var(--action,#a100ff)}@media(max-width:650px){.ds-steps{gap:14px;font-size:11px}.ds-steps span{display:block}.ds-steps b{margin-bottom:8px}}"
+    },
+    {
+      "name": "Evidence comparison",
+      "kind": "custom",
+      "description": "Literal original text next to an editable replacement.",
+      "html": "<div class=\"ds-comparison\"><div><label>Original</label><pre>Example client name</pre></div><div><label for=\"ds-replacement\">Replacement</label><textarea id=\"ds-replacement\">Example organisation</textarea></div></div>",
+      "css": ".ds-comparison{display:grid;grid-template-columns:1fr 1fr;gap:18px;color:var(--ink,#f6f0fb)}.ds-comparison label{display:block;color:var(--muted,#c4b6cf);font:12px Arial,sans-serif;margin:8px 0}.ds-comparison pre,.ds-comparison textarea{font:13px/1.55 ui-monospace,SFMono-Regular,monospace;min-height:100px;white-space:pre-wrap;overflow-wrap:anywhere;border-radius:6px;padding:12px;margin:0;color:var(--ink,#f6f0fb)}.ds-comparison pre{background:#291923;border:1px solid #59404d}.ds-comparison textarea{width:100%;background:#132a26;border:1px solid #426d60;resize:vertical}.ds-comparison textarea:focus-visible{outline:3px solid var(--purple,#c77dff);outline-offset:4px}@media(max-width:900px){.ds-comparison{grid-template-columns:1fr}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Kenobi review workspace",
+    "overview": "This is a descriptive record of the inherited Rockit Kenobi interface, not a new metaphor or visual direction approved by the user. Dark purple surfaces and Accenture purple retain the source product's identity. Familiar fields, file navigation and explicit decision buttons keep the emphasis on reviewing evidence.\n\nThe system uses flat, outlined surfaces and restrained state colour. Before/after text is the central visual comparison. This record is grounded in `app/globals.css` and `app/workspace.tsx`; product requirements remain in `PRODUCT.md`.",
+    "keyCharacteristics": [
+      "Dark purple ground with pale text and purple interaction cues.",
+      "Exact source and replacement text shown in paired evidence areas.",
+      "Persistent focus rings and explicit selected/disabled states.",
+      "Responsive grids that collapse into a single reading column."
+    ],
+    "rules": [
+      {
+        "name": "The Labelled State Rule",
+        "body": "Colour accompanies text labels or pressed states; it does not carry the decision by itself.",
+        "section": "colors"
+      },
+      {
+        "name": "The Flat Surface Rule",
+        "body": "Preserve the distinction between a surface border, a selected fill and a keyboard outline.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve exact before/after text and visible decision labels.",
+      "Do retain focus outlines, selected states and reduced-motion behaviour.",
+      "Do wrap long paths and stack evidence fields when width is constrained.",
+      "Do distinguish coverage limitations from successful completion."
+    ],
+    "donts": [
+      "Don't use colour as the only indication of a decision or risk.",
+      "Don't turn the inherited system display fallback into a new brand typography rule.",
+      "Don't hide the result action below the complete findings list."
+    ]
+  }
+}

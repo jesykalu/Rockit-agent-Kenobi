@@ -1,0 +1,40 @@
+{
+  "name": "kenobi-standalone",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:setup": "node --env-file-if-exists=.env.local scripts/setup-db.mjs"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.3.0",
+    "fflate": "^0.8.3",
+    "next": "^16.4.6",
+    "pdf-lib": "^1.17.1",
+    "postgres": "^3.4.9",
+    "pptxgenjs": "^4.0.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "unpdf": "^1.6.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "prettier": "^3.10.1",
+    "typescript": "5.7.3",
+    "vitest": "^4.1.10"
+  },
+  "type": "module",
+  "overrides": {
+    "image-size": "2.1.0"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
