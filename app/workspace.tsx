@@ -3,7 +3,7 @@ import { put as uploadBlob } from "@vercel/blob/client";
 import { useEffect, useState, useRef } from "react";
 import type { Job, Decision } from "@/lib/types";
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/upload-limits";
-import { reviewStage } from "@/lib/review-stage";
+import { reviewStage, assessmentProgress } from "@/lib/review-stage";
 import { findingCopy, acceptRemaining } from "@/lib/review-copy";
 type ViewJob = Omit<Job, "files"> & {
   files: (Omit<Job["files"][number], "content" | "text"> & {
@@ -181,9 +181,7 @@ export default function Workspace({
               <span
                 key={s}
                 aria-current={
-                  reviewStage(job?.status) === i
-                    ? "step"
-                    : undefined
+                  reviewStage(job?.status) === i ? "step" : undefined
                 }
               >
                 <b>{i + 1}</b>
@@ -254,7 +252,9 @@ export default function Workspace({
                       history.replaceState(null, "", `?review=${prepared.id}`);
                       localStorage.setItem("kenobi-last-review", prepared.id);
                       for (const [i, file] of files.entries()) {
-                        setBusy(`Uploading file ${i + 1} of ${files.length}: connecting to storage.`);
+                        setBusy(
+                          `Uploading file ${i + 1} of ${files.length}: connecting to storage.`,
+                        );
                         await uploadBlob(prepared.uploads[i].key, file, {
                           access: "private",
                           token: prepared.uploads[i].token,
@@ -291,8 +291,8 @@ export default function Workspace({
                 <p className="hint" id="file-help">
                   HTML, code, text-based PDF, PPTX or ZIP. Packages up to 2 GB;
                   individual files up to 25 MB are assessed. Larger files and
-                  dependency folders are listed as excluded. GitHub imports:
-                  up to 25 MB. Legacy .ppt files need conversion to .pptx.
+                  dependency folders are listed as excluded. GitHub imports: up
+                  to 25 MB. Legacy .ppt files need conversion to .pptx.
                 </p>
                 <div className="separator">or connect a repository</div>
                 <label htmlFor="repo">GitHub repository URL</label>
@@ -396,8 +396,10 @@ export default function Workspace({
                   {
                     {
                       index: "Indexing source files",
-                      discover: "Identifying client context",
-                      assess: "Reviewing sensitive information",
+                      discover:
+                        "Identifying client context — next, we use it to propose changes",
+                      assess:
+                        "Finding sensitive information and proposing changes — your review is next",
                       export: "Applying approved changes",
                       "verify-discover": "Checking exported client context",
                       "verify-assess": "Reviewing remaining risks",
@@ -406,13 +408,14 @@ export default function Workspace({
                   }
                 </p>
                 <progress
-                  max={Math.max(1, job.processing.total)}
-                  value={job.processing.cursor}
-                  aria-label="Current stage progress"
+                  max={assessmentProgress(job.processing, job.mode).max}
+                  value={assessmentProgress(job.processing, job.mode).value}
+                  aria-label="Assessment progress across both passes"
                 />
                 <p role="status">
+                  {assessmentProgress(job.processing, job.mode).label}:{" "}
                   {job.processing.cursor} of {job.processing.total || "…"}{" "}
-                  sections completed in this stage.
+                  sections completed.
                 </p>
                 <p>
                   You can close this page. Processing continues on the server,
