@@ -3,6 +3,7 @@ import { put as uploadBlob } from "@vercel/blob/client";
 import { useEffect, useState, useRef } from "react";
 import type { Job, Decision } from "@/lib/types";
 import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/upload-limits";
+import { reviewStage } from "@/lib/review-stage";
 import { findingCopy, acceptRemaining } from "@/lib/review-copy";
 type ViewJob = Omit<Job, "files"> & {
   files: (Omit<Job["files"][number], "content" | "text"> & {
@@ -175,14 +176,12 @@ export default function Workspace({
       </header>
       <main>
         <nav className="steps" aria-label="Review progress">
-          {["Add an asset", "Review changes", "Approve & export"].map(
+          {["Upload & assess", "Review changes", "Approve & export"].map(
             (s, i) => (
               <span
                 key={s}
                 aria-current={
-                  (!job && i === 0) ||
-                  (job?.status === "review" && i === 1) ||
-                  (job && job.status !== "review" && i === 2)
+                  reviewStage(job?.status) === i
                     ? "step"
                     : undefined
                 }
