@@ -17,7 +17,9 @@ export function findingCopy(f: Finding) {
     };
   if (f.source !== "rule")
     return {
-      title: f.category,
+      title: f.category
+        .replace(/_/g, " ")
+        .replace(/^./, (letter) => letter.toUpperCase()),
       risk: f.reason,
       action:
         f.suggestion ||
