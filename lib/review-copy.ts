@@ -20,6 +20,7 @@ export function findingCopy(f: Finding) {
       title: f.category,
       risk: f.reason,
       action:
+        f.suggestion ||
         "Check the exact text below. You can accept the suggestion, write your own replacement, or keep the original.",
     };
   if (f.replacement === "Example organisation")

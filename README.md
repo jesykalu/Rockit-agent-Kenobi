@@ -19,7 +19,7 @@ Open http://127.0.0.1:3000 and enter the configured username and access key in t
 2. Connect a Supabase Postgres database via Vercel Storage. Set `DATABASE_URL` to its pooled connection URL with TLS enabled. Use Supabase’s transaction pooler connection string (port 6543); prepared statements are disabled. The table lives in an unexposed private schema with RLS enabled and public access revoked. Connect as the schema owner on the server. Use a database dedicated to Kenobi; the application role must not be shared with untrusted tools.
 3. Pull development environment variables locally and run `npm run db:setup` once. The script creates the private review table and upload-staging tables with their indexes. Do the same against any separate preview/production database.
 4. Set `KENOBI_USERS` to a JSON object mapping colleague usernames to unique random access keys. Set `KENOBI_ORIGIN` to the exact canonical HTTPS origin, without a trailing slash. Preview deployments must have their own exact origin; requests from other origins are refused.
-5. Set `AZURE_FOUNDRY_ENDPOINT`, `AZURE_FOUNDRY_API_KEY`, and `AI_MODEL_ASSESSMENT` for semantic assessment. The endpoint must support the Anthropic Messages request format used by the reference Rockit agent. No live model is selected or contacted until AI review is explicitly selected.
+5. Set `OPENAI_API_KEY` as a server-only Production secret and `OPENAI_REVIEW_MODEL=gpt-4.1-2025-04-14`. Contextual AI review is the default. Extracted text and source paths are sent to OpenAI Responses with `store:false`; this is not a promise of zero provider retention. No API key reaches the browser. If the connection is missing or fails, the app does not silently fall back to a basic scan. The operator may explicitly select basic pattern scanning.
 6. Optionally set `GITHUB_READ_TOKEN` to a fine-grained read-only token scoped to repositories approved for all tool users. A shared token grants every authenticated tool user read access to those repositories. Do not reuse a broad personal token.
 7. Deploy. The app refuses sign-in when auth/origin settings are missing, and refuses persistent operations on Vercel without Postgres.
 
@@ -28,7 +28,7 @@ Uploads and GitHub imports are capped at 25 MB total and 1,500 files. Browser up
 ## Workflow and approval
 
 - Upload code, HTML, text PDF, PPTX or ZIP; alternatively connect a GitHub repository. ZIP uploads support snapshots from other Git hosts.
-- Supply known client names and project terms. Choose limited local pattern scanning or Azure AI semantic review. Local mode is not a substitute for a full contextual assessment.
+- Known client names and project terms are optional clues. Contextual review first discovers evidence across every text chunk, then assesses each chunk using shared client context. Findings explain the risk, exact proposed generalisation and confidence. Invalid or overlapping evidence is disclosed. Local mode is not a substitute for contextual assessment.
 - Inspect the source text, add missed findings, edit replacement text, and explicitly accept or keep each finding. Rejected findings are counted as retained risks.
 - Choose branding and acknowledge coverage limitations. Approval records the authenticated username, timestamp, exact replacement decisions, and a source-bound hash. Approved plans are locked.
 - Execute separately. The server verifies approval and the source snapshot before applying deterministic edits. Database transactions and advisory locks prevent simultaneous executions across Vercel instances.
@@ -71,4 +71,12 @@ npm run typecheck
 npm run build
 ```
 
-Tests cover approval bypass, stale/tampered snapshots, rejected/overlapping changes, binary exclusion, safe archive paths, authentication/origin checks, and PDF/PPTX export-and-reimport. The optional KENOBI_TEST_DATABASE_URL test verifies a complete approval/export round trip against Postgres, including JSONB encoding and canonical approval hashes. Live Azure checks require model credentials.
+Tests cover approval bypass, stale/tampered snapshots, rejected/overlapping changes, binary exclusion, safe archive paths, authentication/origin checks, and PDF/PPTX export-and-reimport. The optional KENOBI_TEST_DATABASE_URL test verifies a complete approval/export round trip against Postgres, including JSONB encoding and canonical approval hashes. The opt-in live OpenAI evaluation requires `OPENAI_API_KEY`, `OPENAI_REVIEW_MODEL` and `KENOBI_LIVE_AI_TEST=1`. It uses fictional material only and checks client, project, internal-system, commercial and strategy detection without supplied names, then approval/export and a second contextual check.
+
+## Contextual assessment and output verification
+
+The model receives untrusted source evidence and cannot execute tools or fetch links. Only exact source substrings become edits; unsupported suggestions are discarded with a coverage warning. Four requests run at once with a shared 240-second deadline per assessment. Failed or truncated assessment is not presented as a completed review. Very large source sets can exceed that deadline and must be split; there is no background queue. Embedded base64 binary payloads are masked with equal-length spaces for assessment, preserving text edit offsets; these images are not inspected.
+
+The context disclosure shows inferred client clues with source paths. Output verification re-extracts each generated document and reassesses generated text with the same contextual engine before releasing the ZIP. This is a read-only check: it never introduces unapproved edits. Remaining findings stay in the private report; the shareable report contains counts only. A failed verification prevents release. Images, original document metadata and visual logos are not inspected. Source paths are assessed as context but are not automatically renamed. PDFs/PPTX are rebuilt; code execution and application-specific test suites remain the owner's responsibility.
+
+API integration references: [Responses structured output](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses), [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1).

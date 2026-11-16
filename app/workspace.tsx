@@ -8,7 +8,11 @@ type ViewJob = Omit<Job, "files"> & {
     textLength: number;
   })[];
 };
-export default function Workspace() {
+export default function Workspace({
+  ai,
+}: {
+  ai: { configured: boolean; provider: string; model: string };
+}) {
   const [job, setJob] = useState<ViewJob | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState("");
@@ -16,7 +20,7 @@ export default function Workspace() {
     [brand, setBrand] = useState(true),
     [ack, setAck] = useState(false);
   const [selected, setSelected] = useState(""),
-    [mode, setMode] = useState("local");
+    [mode, setMode] = useState("ai");
   const [draftState, setDraftState] = useState("Saved");
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const draftVersion = useRef(0);
@@ -294,13 +298,13 @@ export default function Workspace() {
                   Upload a ZIP for other Git hosts.
                 </p>
                 <label htmlFor="terms">
-                  Client names, projects and sensitive terms
+                  Known client names or project terms (optional)
                 </label>
                 <textarea
                   id="terms"
                   name="terms"
                   rows={3}
-                  placeholder="Separate names with commas or new lines"
+                  placeholder="Optional clues. AI also looks for client details you have not named."
                 />
                 <label htmlFor="mode">Assessment method</label>
                 <select
@@ -312,14 +316,19 @@ export default function Workspace() {
                   <option value="local">
                     Local patterns — limited coverage
                   </option>
-                  <option value="ai">AI review — Azure Foundry</option>
+                  <option value="ai">Contextual AI review — OpenAI</option>
                 </select>
                 <p className="hint">
                   {mode === "ai"
-                    ? "Extracted text is sent to your configured Azure Foundry deployment for contextual review. The host must configure this connection."
+                    ? ai.configured
+                      ? `Text and source paths are sent to ${ai.provider} (${ai.model}) to identify client context, propose generalisations and check the exported text. Images and original document metadata are not assessed.`
+                      : "Contextual review is not connected. Ask your administrator to configure OpenAI. A basic scan cannot assess client confidentiality."
                     : "Stays on this server. Finds supplied names, email addresses, common financial terms and credential patterns. It will miss contextual risks."}
                 </p>
-                <button className="primary" disabled={!!busy}>
+                <button
+                  className="primary"
+                  disabled={!!busy || (mode === "ai" && !ai.configured)}
+                >
                   Review asset
                 </button>
               </form>
@@ -377,7 +386,7 @@ export default function Workspace() {
                 <p>
                   {job.files.length} files · {job.findings.length} findings ·{" "}
                   {job.mode === "ai"
-                    ? "AI-assisted assessment"
+                    ? "Contextual AI assessment"
                     : "Limited local assessment"}
                 </p>
               </div>
@@ -391,9 +400,12 @@ export default function Workspace() {
                   <strong>{job.report?.changedFiles} files changed.</strong>{" "}
                   {job.report?.excludedFiles} excluded ·{" "}
                   {job.report?.rejectedFindings} findings retained ·{" "}
-                  {job.report?.residualFindings} residual pattern matches.
+                  {job.report?.residualFindings} remaining potential risks.
                 </p>
                 <p>
+                  {job.report?.contextualCheck
+                    ? "A second contextual AI check of the exported text is complete. "
+                    : "Only a basic pattern check of the exported text was performed. "}
                   Inspect the result before sharing. Rebuilt documents may
                   differ from their source. Reinstall dependencies and test
                   exported code.
@@ -454,8 +466,12 @@ export default function Workspace() {
                   </details>
                 ) : (
                   <p>
-                    No residual local pattern matches. Contextual and image
-                    risks still require human review.
+                    No remaining risks were detected by this{" "}
+                    {job.report?.contextualCheck
+                      ? "contextual AI and pattern"
+                      : "basic pattern"}{" "}
+                    check. This is not a guarantee. Inspect images, metadata and
+                    the final result before sharing.
                   </p>
                 )}
               </div>
@@ -491,6 +507,25 @@ export default function Workspace() {
                   {reviewed} of {job.findings.length} findings decided
                 </span>
               </section>
+            )}
+            {job.assessment && (
+              <details className="coverage">
+                <summary>
+                  Client context identified · {job.assessment.context.length}{" "}
+                  clues
+                </summary>
+                <p>
+                  {job.assessment.provider} · {job.assessment.model} ·{" "}
+                  {job.assessment.reviewedChunks} text sections assessed. These
+                  are evidence-based hypotheses for you to verify.
+                </p>
+                {job.assessment.context.map((item, i) => (
+                  <p key={i}>
+                    <strong>{item.original}</strong> — {item.meaning}{" "}
+                    <small>({item.path})</small>
+                  </p>
+                ))}
+              </details>
             )}
             <div className="review-grid">
               <aside className="file-list">
@@ -596,6 +631,12 @@ export default function Workspace() {
                       </div>
                       <p>
                         <strong>Why this matters:</strong> {copy.risk}
+                        {f.confidence && (
+                          <span>
+                            {" "}
+                            AI confidence: {f.confidence} (not a guarantee).
+                          </span>
+                        )}
                       </p>
                       <p>
                         <strong>Suggested change:</strong> {copy.action}
@@ -857,7 +898,7 @@ export default function Workspace() {
                       disabled={!!busy}
                       onClick={() =>
                         action(
-                          "Applying approved changes and building your export.",
+                          "Applying approved changes and checking the exported text.",
                           async () => {
                             await post(`/api/jobs/${job.id}/execute`);
                             await load(job.id);

@@ -3,8 +3,9 @@ import PptxGenJS from "pptxgenjs";
 import { zipSync } from "fflate";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { Job, Finding } from "./types";
-import { applyDecisions, scanFile, verifyApproval } from "./review";
+import type { Job, Finding, AssetFile } from "./types";
+import { extract } from "./ingest";
+import { applyDecisions, assess, verifyApproval } from "./review";
 
 export const BRAND_DESCRIPTION =
   "HTML: add an Accenture header and purple/white typography stylesheet. PDF and PowerPoint: rebuild reviewed text in an Accenture template. Code: include an opt-in Accenture CSS file and logo, without automatically rewiring application components. Original document images, notes, metadata and layout are discarded. Unsupported binary files are excluded. Source filenames are preserved for code imports; inspect them before sharing.";
@@ -106,7 +107,7 @@ export async function buildExport(job: Job) {
     excludedFiles = 0,
     residualFindings = 0;
   const warnings = [...job.warnings];
-  const residualDetails: Finding[] = [];
+  const outputFiles: AssetFile[] = [];
   for (let i = 0; i < job.files.length; i++) {
     const file = job.files[i];
     if (file.kind === "binary") {
@@ -114,8 +115,7 @@ export async function buildExport(job: Job) {
       continue;
     }
     let text = applyDecisions(file, job.findings, approval.decisions);
-    residualDetails.push(...scanFile({ ...file, text }, job.clientTerms));
-    residualFindings = residualDetails.length;
+
     const changed = text !== file.text;
     let bytes: Uint8Array,
       filename = file.path;
@@ -136,6 +136,7 @@ export async function buildExport(job: Job) {
       bytes = Buffer.from(text, "utf8");
     }
     entries[`asset/${filename}`] = bytes;
+    outputFiles.push(await extract(filename, bytes));
     if (
       changed ||
       file.kind !== "text" ||
@@ -147,10 +148,21 @@ export async function buildExport(job: Job) {
     entries["kenobi-brand/accenture.css"] = Buffer.from(BRAND_CSS);
     entries["kenobi-brand/accenture-logo.png"] = logo;
   }
+  const checked = await assess(
+    outputFiles,
+    job.clientTerms,
+    job.mode === "ai",
+    "residual",
+    job.assessment?.context,
+  );
+  const residualDetails = checked.findings;
+  residualFindings = residualDetails.length;
+  warnings.push(...checked.warnings);
   const rejectedFindings = approval.decisions.filter(
     (d) => d.decision === "reject",
   ).length;
   const report = {
+    contextualCheck: job.mode === "ai",
     changedFiles,
     excludedFiles,
     residualFindings,
@@ -171,6 +183,7 @@ export async function buildExport(job: Job) {
         residualFindings,
         rejectedFindings,
         assessmentMode: job.mode,
+        contextualCheck: job.mode === "ai",
         brandApplied: approval.brand,
         notice:
           "Reviewed output, not a guarantee of confidentiality. Inspect before sharing. Detailed evidence remains in the private review workspace.",

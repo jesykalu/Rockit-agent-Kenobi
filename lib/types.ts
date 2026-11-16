@@ -16,6 +16,8 @@ export interface Finding {
   end: number;
   line: number;
   source: "rule" | "ai" | "reviewer";
+  suggestion?: string;
+  confidence?: "high" | "medium" | "low";
 }
 export interface Decision {
   id: string;
@@ -34,6 +36,19 @@ export interface Job {
   files: AssetFile[];
   findings: Finding[];
   warnings: string[];
+  assessment?: {
+    version: string;
+    provider: string;
+    model: string;
+    reviewedChunks: number;
+    context: {
+      path: string;
+      original: string;
+      type: string;
+      meaning: string;
+    }[];
+    purpose: string;
+  };
   draft?: { decisions: Decision[]; brand: boolean };
   approval?: {
     reviewer: string;
@@ -44,6 +59,7 @@ export interface Job {
     acknowledged: true;
   };
   report?: {
+    contextualCheck?: boolean;
     changedFiles: number;
     excludedFiles: number;
     residualFindings: number;

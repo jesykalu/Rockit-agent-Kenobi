@@ -56,8 +56,17 @@ export async function POST(request: Request) {
       .map((t) => t.trim())
       .filter(Boolean)
       .slice(0, 100);
-    const useAI = form.get("mode") === "ai";
-    const { findings, warnings } = await assess(files, terms, useAI);
+    const mode = form.get("mode") || "ai";
+    if (mode !== "ai" && mode !== "local")
+      throw new Error(
+        "Choose contextual review or explicitly select basic pattern scanning.",
+      );
+    const useAI = mode === "ai";
+    const { findings, warnings, ...assessment } = await assess(
+      files,
+      terms,
+      useAI,
+    );
     if (findings.length > 2000)
       throw new Error(
         "More than 2,000 findings. Split this source set for a manageable review.",
@@ -74,6 +83,7 @@ export async function POST(request: Request) {
       files,
       findings,
       warnings,
+      ...assessment,
     };
     await saveJob(job);
     return NextResponse.json({ id: job.id });
