@@ -2,7 +2,10 @@ import { createHash, timingSafeEqual } from "node:crypto";
 export function authenticate(request: Request): string | null {
   const configured = process.env.KENOBI_USERS;
   if (!configured) return null;
-  const users = JSON.parse(configured) as Record<string, string>;
+  const users = {
+    ...JSON.parse(process.env.KENOBI_HELPER_USERS || "{}"),
+    ...JSON.parse(configured),
+  } as Record<string, string>;
   const header = request.headers.get("authorization") || "";
   if (!header.startsWith("Basic ")) return null;
   const credentials = Buffer.from(header.slice(6), "base64").toString("utf8");
